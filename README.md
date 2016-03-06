@@ -2,7 +2,7 @@ This is the code to recreate the CMV primary infection analysis. The code used i
 
 TO DO:
 1. Add a folder and figure to describe the 6 excluded infants
-need to redo the additional data files to just have one file that has the infant data starting at -21 days from infection data to the end of the study.
+need to redo the additional data files to just have one file that has the infant data starting at -21 days from infection data to the end of the study. Need to add plasma data as well.
 
 
 2. Consolidate the episode analysis code - can probably use most of old files, just remove unnecessary packages, make sure PatientID2 is used, have explicit output for each figure and table. Should there be an .Rmd for EDA that wasn't included (correlation analysis, serum analysis)?
