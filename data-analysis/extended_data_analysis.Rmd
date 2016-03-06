@@ -77,7 +77,7 @@ ggplot(data = excluded_infants2, aes(x = days_orig, y = count)) +
 These plots show the infant shedding data up to 21 days before the infection time as defined by Gantt et al and the adjusted oral shedding start time.
 
 ```{r full infant data, fig.height=10, fig.width = 8}
-full_data = subset(all_infant_data, Use == "Y" & last_swab_day > 150 &  PatientID2 != "P") %>%
+full_data = subset(all_infant_data, Use == "Y" & last_swab_day > 150 &  PatientID2 != "O") %>%
   group_by(PatientID2) %>%
   mutate(
     adjusted = any(days_orig != days2),
