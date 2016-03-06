@@ -44,7 +44,7 @@ ggplot(data = excluded_infants1, aes(x = days2, y = count)) +
   geom_point() +
   geom_line() +
   ggtitle("Infants with < 1 month of infection data") +
-  scale_x_continuous("Days after infant infection") +
+  scale_x_continuous("Days after infant infection", breaks = -2:40*10) +
   scale_y_continuous(expression(paste("Log"[10], " CMV DNA conc.")), breaks = 0:9) +
   #geom_bar(data = subset(temp_data, !is.na(count_pls)),
   #         aes(x = days2, y = count_pls, colour = PatientID2, fill = PatientID2), 
@@ -56,9 +56,9 @@ ggplot(data = excluded_infants1, aes(x = days2, y = count)) +
 ###B. Four infants with limited data
 
 ```{r excluded infants}
-excluded_infants2 = subset(all_infant_data, Use == "Y" & last_swab_day < 150)
+excluded_infants2 = subset(all_infant_data, Use == "Y" & (last_swab_day < 150 | PatientID2 == "O"))
 
-ggplot(data = excluded_infants2, aes(x = days2, y = count)) +
+ggplot(data = excluded_infants2, aes(x = days_orig, y = count)) +
   geom_point() +
   geom_line() +
   ggtitle(" Excluded infant data") +
@@ -67,7 +67,8 @@ ggplot(data = excluded_infants2, aes(x = days2, y = count)) +
   #geom_bar(data = subset(temp_data, !is.na(count_pls)),
   #         aes(x = days2, y = count_pls, colour = PatientID2, fill = PatientID2), 
   #         stat = "identity", position = "dodge") +  
-  facet_wrap( ~ PatientID2)
+  facet_wrap( ~ PatientID2) +
+  theme(axis.text.x = element_text(size = 8))
 
 ```
 
@@ -76,15 +77,42 @@ ggplot(data = excluded_infants2, aes(x = days2, y = count)) +
 These plots show the infant shedding data up to 21 days before the infection time as defined by Gantt et al and the adjusted oral shedding start time.
 
 ```{r full infant data, fig.height=10, fig.width = 8}
-full_data = subset(all_infant_data, Use == "Y" & last_swab_day > 150)
+full_data = subset(all_infant_data, Use == "Y" & last_swab_day > 150 &  PatientID2 != "P") %>%
+  group_by(PatientID2) %>%
+  mutate(
+    adjusted = any(days_orig != days2),
+    diff_day = days_orig[days2 == 0]
+    )
+```
 
-ggplot(data = full_data, aes(x = days2, y = count)) +
+###A. Infants with unadjusted infection times
+```{r unadjusted infant data, fig.height=10, fig.width = 8}
+
+ggplot(data = subset(full_data, !adjusted), aes(x = days2, y = count)) +
   geom_point() +
   geom_line() +
   ggtitle("Extended infant shedding data") +
   scale_x_continuous("Days after infant infection") +
   scale_y_continuous(expression(paste("Log"[10], " CMV DNA conc.")), breaks = 0:9) +
-  #geom_vline(aes(x = original_inf_day), linetype = "dashed") +
+  geom_vline(xintercept = 0, colour = "gray", alpha = 0.75) +
+  facet_wrap( ~ PatientID2)
+
+```
+
+###B. Infants with adjusted infection times
+
+```{r adjusted infant data, fig.height=10, fig.width = 8}
+
+ggplot(data = subset(full_data, adjusted), aes(x = days2, y = count)) +
+  geom_point() +
+  geom_line() +
+  ggtitle("Extended infant shedding data (adjusted infection time)\ndashed = original infection day") +
+  scale_x_continuous("Days after infant infection") +
+  scale_y_continuous(expression(paste("Log"[10], " CMV DNA conc.")), breaks = 0:9) +
+  geom_vline(xintercept = 0, colour = "gray", alpha = 0.75) +
+  geom_vline(data = subset(full_data, adjusted) %>% group_by(PatientID2, diff_day) %>%
+               summarize(),
+             aes(xintercept = diff_day), linetype = "dashed") +
   facet_wrap( ~ PatientID2)
 
 ```
