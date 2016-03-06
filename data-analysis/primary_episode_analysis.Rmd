@@ -1,0 +1,217 @@
+---
+title: "CMV primary episode analysis"
+author: "Bryan Mayer"
+date: "March 6, 2016"
+output: pdf_document
+toc: yes
+---
+
+```{r load knitr and set chunk options, echo = F}
+library(knitr)
+opts_chunk$set(warning = FALSE, message = FALSE, echo = FALSE,
+              error = FALSE)
+```
+
+```{r load packages, data, and functions}
+library(plyr)
+library(dplyr)
+library(data.table)
+library(knitr)
+library(xtable)
+library(ggplot2)
+library(cowplot)
+
+save_output_figs = F
+save_output_tables = F
+fontsize = 12
+
+load("../data/CMVprimaryEpisode.RData")
+source("functions/primary_episode_functions.R")
+
+episodeSummary = create_primary_episodes_fun(CMVPrimaryEpisodes)
+
+process_stats_median = function(var){
+  median_var = round(median(var, 2))
+  range_var = round(range(var), 2)
+  paste(median_var, " (", range_var[1], ", ", range_var[2], ")", sep = "")
+}
+
+process_est_ci= function(est, lower, upper){
+  lower = round(lower, 2)
+  upper = round(upper, 2)
+  est = round(est, 2)
+  paste(est, " (95% CI: ", lower, ", ", upper, ")", sep = "")
+}
+
+```
+
+#Overview
+
+This is the main analysis of the primary CMV oral shedding episodes. Here, we extract key characteristics of the shedding episodes (e.g., peak load), determine the cutoffs for the three phases, analyze correlation between features, and analyze rebound behavior.
+
+#Analysis
+
+##Overview of the data
+
+```{r tracings, fig.height=5, fig.width=7}
+idorder = rev(levels(with(episodeSummary, reorder(PatientID2, -whenmax, mean))))
+tracing_data = subset(CMVPrimaryEpisodes, count > 0)
+tracing_data$PatientID2 = factor(tracing_data$PatientID2, levels = idorder, ordered = T)
+
+patientSet = list(idorder[1:7], idorder[8:14])
+tracings = llply(1:2, function(i){
+  ggplot(data = subset(tracing_data, PatientID2 %in% patientSet[[i]]),
+       aes(x = days2, y = count, colour = PatientID2)) +
+    #geom_point(size = 1) +
+    geom_line(size = 1) +
+    scale_colour_discrete("Infant ID") +
+    scale_x_continuous("Days from start of infection", breaks = 100*0:700, expand = c(0.01, 0.01), limits = c(0, 750)) +
+    scale_y_continuous(expression(paste("Log"[10]," CMV DNA conc.")), breaks = 0:9, limits =  c(0, 9)) +
+    theme(legend.position = "top",
+      text = element_text(family = "Times", size = fontsize))
+})
+
+tracings_grid = plot_grid(tracings[[1]], tracings[[2]], nrow = 1,
+                          labels = c("A", "B"), label_size = 18, vjust = 3.5)
+tracings_grid
+```
+
+### General statistics, peak shedding, duration
+```{r summary stats, results='asis'}
+
+demo_stats = CMVPrimaryEpisodes %>% group_by(PatientID2, momhiv) %>% 
+  summarize(age = min(days_dob),
+            total_oral_swabs = n(),
+            total_plasma_swabs = sum(!is.na(plasma_count)))
+
+summary_statistics = data.table(
+  n = length(unique(CMVPrimaryEpisodes$PatientID2)),
+  'total negative swabs' = sum(CMVPrimaryEpisodes$count == 0),
+  'median age (range) days' = process_stats_median(demo_stats$age),
+  'percent mothers hiv +' = mean(demo_stats$momhiv == "pos") * 100,
+  'total oral swabs' = sum(demo_stats$total_oral_swabs),
+  'total plasma swabs' = sum(demo_stats$total_plasma_swabs),
+  'median duration (range) days' = process_stats_median(episodeSummary$duration),
+  'median peak shedding duration (range) weeks' = process_stats_median(episodeSummary$peak_shedding_days/7),
+  'median peak shedding (range) log10 conc.' = process_stats_median(episodeSummary$peak)
+) %>% t()
+
+colnames(summary_statistics) <- " "
+
+print(xtable(summary_statistics, caption = "Summary statistics"), comment = F)
+
+subset(CMVPrimaryEpisodes, count == 0) %>% group_by(PatientID2) %>% 
+  summarize(n = n(), days = paste0(days2, collapse = ", ")) %>%
+  xtable(caption = "Negative swabs") %>%
+  print(include.rownames = F, comment = F)
+
+```
+
+```{r episode plot, fig.height=5.75, fig.width=4, fig.align='center'}
+epPlot = ggplot(data = episodeSummary, aes(x = reorder(PatientID2, -whenmax, mean), y = whenmax)) +
+  geom_linerange(aes(ymin = startTime, ymax = peakphase_start), 
+                 size = 2) +
+  geom_linerange(aes(ymin = peakphase_start, ymax = peak_shedding_days_end), 
+                 size = 2, colour = "red") +
+  geom_linerange(aes(ymin = peak_shedding_days_end, ymax = endTime), size = 2) +
+  scale_x_discrete("Infant ID") +
+  scale_y_continuous("Episode observation time (days)", breaks = 100 * 0:8) +
+  geom_point(size = 4, colour = "red") +
+  geom_point(aes(size = peak), shape = 21, colour = "red") +
+  scale_size_continuous("Peak size", range = c(4, 13), breaks = c(7, 7.5, 8, 8.5, 9)) +
+  #geom_rect(aes(xmin = as.numeric(PatientID) - 0.2, xmax = as.numeric(PatientID) + 0.2, 
+  #              ymin = 0, ymax = 0.5)) +
+  theme(
+    text = element_text(family = "Times", size = fontsize)
+    ,axis.text.y = element_text(size = fontsize)
+    ,axis.title.y = element_text(size = fontsize)
+    ,legend.position = c(1, 1)
+    ,legend.justification = c(1, 1)) +
+  coord_flip()
+
+epPlot + ggtitle("Red region denotes shedding within 1 log of peak")
+```
+
+### Comparison of oral and plasma shedding
+
+```{r plasma and oral, fig.height = 5.5, fig.width = 6, results = 'asis'}
+plasma_data = subset(CMVPrimaryEpisodes, !is.na(plasma_count)) %>%
+  mutate(positive_plasma = plasma_count > 0)
+
+plasma_time_pl = ggplot(data = plasma_data, aes(x = days2, y = plasma_count)) +
+  geom_point() +
+  scale_x_continuous("Primary episode day") +
+  scale_y_continuous("Log10 plasma viral load")
+
+plasma_oral_pl = ggplot(data = plasma_data, aes(x = count, y = plasma_count)) +
+  geom_point() +
+  scale_x_continuous("Log10 oral viral load") +
+  scale_y_continuous("Log10 plasma viral load")
+
+plot_grid(plasma_time_pl, plasma_oral_pl, nrow = 1)
+
+pls_correlation_stat = with(plasma_data, cor.test(count, plasma_count)) %>%
+  broom::tidy()
+
+
+pls_correlation_stat_allpos = with(subset(plasma_data, positive_plasma), 
+                                   cor.test(count, plasma_count)) %>%
+  broom::tidy()
+
+#spearman, use bootstrapping for CIs
+pls_correlation_stat_spear = boot_fun(1000, select(plasma_data, count, plasma_count)) %>%
+  rename(estimate = boot_median, conf.low = boot_lowerCI, conf.high = boot_upperCI)
+pls_correlation_stat_allpos_spear = boot_fun(1000, select(subset(plasma_data, positive_plasma), count, plasma_count)) %>%
+  rename(estimate = boot_median, conf.low = boot_lowerCI, conf.high = boot_upperCI)
+
+pls_lmm = lmerTest::lmer(count ~ positive_plasma + (1|PatientID2), data = plasma_data)
+pls_lmm_ci = confint(pls_lmm, parm = "positive_plasmaTRUE")
+
+pls_lmm_results = data.frame(
+  estimate = broom::tidy(pls_lmm) %>% filter(term == "positive_plasmaTRUE") %>% select(estimate),
+  conf.low = as.numeric(pls_lmm_ci[1]),
+  conf.high = as.numeric(pls_lmm_ci[2])
+)
+
+plasma_table = data.table(
+  'total oral swabs' = sum(demo_stats$total_oral_swabs),
+  'total plasma swabs' = sum(demo_stats$total_plasma_swabs),
+  'total positive plasma swabs' = sum(demo_stats$positive_plasma),
+  'percent positive plasma swabs' = 100 * mean(plasma_data$positive_plasma),
+  'median log10 pls viral load (range)' = 
+    process_stats_median(subset(plasma_data, positive_plasma)$plasma_count),
+  'Pearson correlation with oral' = with(pls_correlation_stat, process_est_ci(estimate, conf.low, conf.high)),
+  'Spearman correlation with oral' = with(pls_correlation_stat_spear, 
+                                   process_est_ci(estimate, conf.low, conf.high)),
+  'Pearson correlation with oral (pos plasma only)' = 
+     with(pls_correlation_stat_allpos, process_est_ci(estimate, conf.low, conf.high)),
+  'Spearman correlation with oral (pos plasma only)' = with(pls_correlation_stat_allpos_spear, process_est_ci(estimate, conf.low, conf.high)),
+  'lmm oral count ~ binary pls predictor' = 
+    with(pls_lmm_results, process_est_ci(estimate, conf.low, conf.high))
+) %>% t()
+colnames(plasma_table) <- " "
+
+print(xtable(plasma_table, caption = "Plasma load analysis"), 
+      comment = F)
+```
+
+
+## Three phase analysis
+Each episode has three characteristic phases: 
+
+1. expansion: oral episode start to 1 log before the peak
+
+2. transition: 1 log before the peak until the peak
+
+3. clearance: peak until end of observation 
+
+
+```{r three phase setup for episodes}
+
+```
+
+### Compare three phase to two phase
+
+
+
+# Saving figures and table (See code)
