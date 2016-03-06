@@ -1,0 +1,91 @@
+---
+title: "Extended analysis of the data"
+author: "Bryan Mayer"
+date: "March 5, 2016"
+output: pdf_document
+toc: yes
+---
+```{r load knitr and set chunk options, echo = F}
+library(knitr)
+opts_chunk$set(warning = FALSE, message = FALSE, echo = FALSE,
+              error = FALSE)
+```
+
+```{r load packages and data}
+library(dplyr)
+library(knitr)
+library(xtable)
+library(readr)
+library(ggplot2)
+library(cowplot)
+
+all_infant_data = read_csv("../data/complete_episode_data.csv")
+
+
+```
+
+
+##Background
+
+In this document, the CMV data for all of the infants before the final subsetting is presented. The definition of infection was defined in Gantt et al. The infection times from that manuscript were generally used; however, the expansion of oral shedding did not always match the exacted infection time, which does not necessarily depend on oral shedding. This is all documented in 'data/primary_infection_notes.csv' in this repository. In this supplementary analysis document, there are two components presented: 1) data for the excluded infants and 2) data for included infants with both infection time definitions.
+
+##1. Excluded infants 
+
+These were 6 infants that met the criteria for primary CMV infection but did not have enough data to be included in this analysis.
+
+###A. Two infants with less than a month of data
+
+Infant S was defined as infected using plasma data.
+
+```{r infants with less than a month}
+excluded_infants1 = subset(all_infant_data, Use == "N")
+
+ggplot(data = excluded_infants1, aes(x = days2, y = count)) +
+  geom_point() +
+  geom_line() +
+  ggtitle("Infants with < 1 month of infection data") +
+  scale_x_continuous("Days after infant infection") +
+  scale_y_continuous(expression(paste("Log"[10], " CMV DNA conc.")), breaks = 0:9) +
+  #geom_bar(data = subset(temp_data, !is.na(count_pls)),
+  #         aes(x = days2, y = count_pls, colour = PatientID2, fill = PatientID2), 
+  #         stat = "identity", position = "dodge") +
+  facet_wrap( ~ PatientID2)
+
+```
+
+###B. Four infants with limited data
+
+```{r excluded infants}
+excluded_infants2 = subset(all_infant_data, Use == "Y" & last_swab_day < 150)
+
+ggplot(data = excluded_infants2, aes(x = days2, y = count)) +
+  geom_point() +
+  geom_line() +
+  ggtitle(" Excluded infant data") +
+  scale_x_continuous("Days after infant infection") +
+  scale_y_continuous(expression(paste("Log"[10], " CMV DNA conc.")), breaks = 0:9) +
+  #geom_bar(data = subset(temp_data, !is.na(count_pls)),
+  #         aes(x = days2, y = count_pls, colour = PatientID2, fill = PatientID2), 
+  #         stat = "identity", position = "dodge") +  
+  facet_wrap( ~ PatientID2)
+
+```
+
+##2. Infant data up to 21 days showing infection time definition
+
+These plots show the infant shedding data up to 21 days before the infection time as defined by Gantt et al and the adjusted oral shedding start time.
+
+```{r full infant data, fig.height=10, fig.width = 8}
+full_data = subset(all_infant_data, Use == "Y" & last_swab_day > 150)
+
+ggplot(data = full_data, aes(x = days2, y = count)) +
+  geom_point() +
+  geom_line() +
+  ggtitle("Extended infant shedding data") +
+  scale_x_continuous("Days after infant infection") +
+  scale_y_continuous(expression(paste("Log"[10], " CMV DNA conc.")), breaks = 0:9) +
+  #geom_vline(aes(x = original_inf_day), linetype = "dashed") +
+  facet_wrap( ~ PatientID2)
+
+```
+
