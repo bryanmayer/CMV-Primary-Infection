@@ -19,6 +19,8 @@ library(readr)
 library(ggplot2)
 library(cowplot)
 
+save_output_figs = F
+
 all_infant_data = read_csv("../data/complete_episode_data.csv")
 
 
@@ -41,14 +43,17 @@ Infant S was defined as infected using plasma data.
 excluded_infants1 = subset(all_infant_data, Use == "N")
 
 ggplot(data = excluded_infants1, aes(x = days2, y = count)) +
+  geom_bar(data = subset(excluded_infants1, !is.na(plasma_count)),
+         aes(x = days2, y = plasma_count), colour = "gray", width = 1,
+         stat = "identity", position = "dodge") +
+  geom_point(data = subset(excluded_infants1, !is.na(plasma_count)),
+       aes(y = plasma_count), colour = "gray", shape = 10, size = 3,
+       stat = "identity") +
   geom_point() +
   geom_line() +
   ggtitle("Infants with < 1 month of infection data") +
   scale_x_continuous("Days after infant infection", breaks = -2:40*10) +
   scale_y_continuous(expression(paste("Log"[10], " CMV DNA conc.")), breaks = 0:9) +
-  #geom_bar(data = subset(temp_data, !is.na(count_pls)),
-  #         aes(x = days2, y = count_pls, colour = PatientID2, fill = PatientID2), 
-  #         stat = "identity", position = "dodge") +
   facet_wrap( ~ PatientID2)
 
 ```
@@ -58,15 +63,18 @@ ggplot(data = excluded_infants1, aes(x = days2, y = count)) +
 ```{r excluded infants}
 excluded_infants2 = subset(all_infant_data, Use == "Y" & (last_swab_day < 150 | PatientID2 == "O"))
 
-ggplot(data = excluded_infants2, aes(x = days_orig, y = count)) +
+ggplot(data = excluded_infants2, aes(x = days2, y = count)) +
+  geom_bar(data = subset(excluded_infants2, !is.na(plasma_count)),
+         aes(y = plasma_count), colour = "gray", width = 1,
+         stat = "identity", position = "dodge") +
+  geom_point(data = subset(excluded_infants2, !is.na(plasma_count)),
+       aes(y = plasma_count), colour = "gray", shape = 10, size = 3,
+       stat = "identity") +
   geom_point() +
   geom_line() +
   ggtitle(" Excluded infant data") +
   scale_x_continuous("Days after infant infection") +
   scale_y_continuous(expression(paste("Log"[10], " CMV DNA conc.")), breaks = 0:9) +
-  #geom_bar(data = subset(temp_data, !is.na(count_pls)),
-  #         aes(x = days2, y = count_pls, colour = PatientID2, fill = PatientID2), 
-  #         stat = "identity", position = "dodge") +  
   facet_wrap( ~ PatientID2) +
   theme(axis.text.x = element_text(size = 8))
 
@@ -117,3 +125,46 @@ ggplot(data = subset(full_data, adjusted), aes(x = days2, y = count)) +
 
 ```
 
+## Supplementary figure
+
+Options for supplementary material
+
+```{r supp figure, fig.height=4, fig.width = 6, fig.align = 'center'}
+
+excluded_infants = bind_rows(excluded_infants1, excluded_infants2)
+
+make_supp_fig = function(excluded_infants){
+  excluded_infants$infantid = paste("Infant", excluded_infants$PatientID2)
+  
+  ggplot(data = excluded_infants, aes(x = days2, y = count)) +
+  geom_bar(data = subset(excluded_infants, !is.na(plasma_count)),
+         aes(y = plasma_count), colour = "gray", width = 1,
+         stat = "identity", position = "dodge") +
+  geom_point(data = subset(excluded_infants, !is.na(plasma_count)),
+       aes(y = plasma_count), colour = "gray", shape = 10, size = 3,
+       stat = "identity") +
+  geom_point() +
+  geom_line() +
+  #ggtitle(" Excluded infant data") +
+  scale_x_continuous("Days after infant infection") +
+  scale_y_continuous(expression(paste("Log"[10], " CMV DNA conc.")), breaks = 0:9) +
+  facet_wrap( ~ infantid) +
+  geom_vline(xintercept = 0, size = 0.5, linetype= "dashed") +
+  theme(text = element_text(size = 10),
+        axis.text = element_text(size = 8),
+        strip.background = element_rect(fill = "white", colour = "black", 
+                                        linetype = "solid", size = 1))
+}
+
+supp_fig1 = make_supp_fig(excluded_infants)
+supp_fig1
+
+supp_fig2 = make_supp_fig(subset(excluded_infants, !(PatientID2 == "O" & days2 > 117)))
+supp_fig2
+
+if(save_output_figs){
+  ggsave("../figures/supplementary/excluded_infants_fullO.pdf", supp_fig1, height = 4, width = 6)
+  ggsave("../figures/supplementary/excluded_infants.pdf", supp_fig2, height = 4, width = 6)
+}
+
+```

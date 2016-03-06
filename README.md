@@ -1,7 +1,7 @@
 This is the code to recreate the CMV primary infection analysis. The code used is currently in my dropbox and a private github repo but contains a ton of exploratory analysis and extrananeous analysis not included in the manuscript.
 
 TO DO:
-1. Add a folder and figure to describe the 6 excluded infants
+CHECK 1. Add a folder and figure to describe the 6 excluded infants
 need to redo the additional data files to just have one file that has the infant data starting at -21 days from infection data to the end of the study. Need to add plasma data as well.
 
 
