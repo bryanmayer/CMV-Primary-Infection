@@ -24,6 +24,8 @@ library(cowplot)
 save_output_figs = F
 save_output_tables = F
 fontsize = 12
+x_adj = 7
+y_adj = 4
 
 load("../data/CMVprimaryEpisode.RData")
 source("functions/primary_episode_functions.R")
@@ -31,7 +33,7 @@ source("functions/primary_episode_functions.R")
 episodeSummary = create_primary_episodes_fun(CMVPrimaryEpisodes)
 
 process_stats_median = function(var){
-  median_var = round(median(var, 2))
+  median_var = round(median(var), 2)
   range_var = round(range(var), 2)
   paste(median_var, " (", range_var[1], ", ", range_var[2], ")", sep = "")
 }
@@ -45,13 +47,11 @@ process_est_ci= function(est, lower, upper){
 
 ```
 
-#Overview
+#Description
 
 This is the main analysis of the primary CMV oral shedding episodes. Here, we extract key characteristics of the shedding episodes (e.g., peak load), determine the cutoffs for the three phases, analyze correlation between features, and analyze rebound behavior.
 
-#Analysis
-
-##Overview of the data
+#Overview of the data
 
 ```{r tracings, fig.height=5, fig.width=7}
 idorder = rev(levels(with(episodeSummary, reorder(PatientID2, -whenmax, mean))))
@@ -76,7 +76,7 @@ tracings_grid = plot_grid(tracings[[1]], tracings[[2]], nrow = 1,
 tracings_grid
 ```
 
-### General statistics, peak shedding, duration
+## General statistics, peak shedding, duration
 ```{r summary stats, results='asis'}
 
 demo_stats = CMVPrimaryEpisodes %>% group_by(PatientID2, momhiv) %>% 
@@ -93,6 +93,7 @@ summary_statistics = data.table(
   'total plasma swabs' = sum(demo_stats$total_plasma_swabs),
   'median duration (range) days' = process_stats_median(episodeSummary$duration),
   'median peak shedding duration (range) weeks' = process_stats_median(episodeSummary$peak_shedding_days/7),
+  'median first positive (range) log10 conc.' = process_stats_median(episodeSummary$firstpos),
   'median peak shedding (range) log10 conc.' = process_stats_median(episodeSummary$peak)
 ) %>% t()
 
@@ -132,24 +133,26 @@ epPlot = ggplot(data = episodeSummary, aes(x = reorder(PatientID2, -whenmax, mea
 epPlot + ggtitle("Red region denotes shedding within 1 log of peak")
 ```
 
-### Comparison of oral and plasma shedding
+## Comparison of oral and plasma shedding
 
-```{r plasma and oral, fig.height = 5.5, fig.width = 6, results = 'asis'}
+```{r plasma and oral plots, fig.height = 5.5, fig.width = 6, results = 'asis'}
 plasma_data = subset(CMVPrimaryEpisodes, !is.na(plasma_count)) %>%
   mutate(positive_plasma = plasma_count > 0)
 
 plasma_time_pl = ggplot(data = plasma_data, aes(x = days2, y = plasma_count)) +
   geom_point() +
   scale_x_continuous("Primary episode day") +
-  scale_y_continuous("Log10 plasma viral load")
+  scale_y_continuous("Log10 plasma CMV conc.")
 
 plasma_oral_pl = ggplot(data = plasma_data, aes(x = count, y = plasma_count)) +
   geom_point() +
-  scale_x_continuous("Log10 oral viral load") +
-  scale_y_continuous("Log10 plasma viral load")
+  scale_x_continuous("Log10 oral CMV conc.") +
+  scale_y_continuous("Log10 plasma CMV conc.")
 
 plot_grid(plasma_time_pl, plasma_oral_pl, nrow = 1)
+```
 
+```{r plasma and oral statistics}
 pls_correlation_stat = with(plasma_data, cor.test(count, plasma_count)) %>%
   broom::tidy()
 
@@ -172,7 +175,9 @@ pls_lmm_results = data.frame(
   conf.low = as.numeric(pls_lmm_ci[1]),
   conf.high = as.numeric(pls_lmm_ci[2])
 )
+```
 
+```{r plasma and oral results table, results = 'asis'}
 plasma_table = data.table(
   'total oral swabs' = sum(demo_stats$total_oral_swabs),
   'total plasma swabs' = sum(demo_stats$total_plasma_swabs),
@@ -196,7 +201,7 @@ print(xtable(plasma_table, caption = "Plasma load analysis"),
 ```
 
 
-## Three phase analysis
+# Three phase classification
 Each episode has three characteristic phases: 
 
 1. expansion: oral episode start to 1 log before the peak
@@ -205,13 +210,205 @@ Each episode has three characteristic phases:
 
 3. clearance: peak until end of observation 
 
-
 ```{r three phase setup for episodes}
+phase_names = c("Expansion", "Transition", "Clearance")
+
+durationData = episodeSummary %>% group_by(PatientID2) %>% 
+  summarize(growth = peakphase_start,
+            middle = peakphase_end - peakphase_start,
+            decay = duration - peakphase_end) %>%
+  melt(measure.vars = c("growth", "middle", "decay"))
+
+swabVar = plyr::ldply(unique(CMVPrimaryEpisodes$PatientID2),
+                function(id) swab2swab_function(subset(CMVPrimaryEpisodes, 
+                                                       PatientID2 == as.character(id))))
+
+triphasicFit = plyr::ldply(unique(CMVPrimaryEpisodes$PatientID2),
+                     function(id) triphasicFit_function(subset(CMVPrimaryEpisodes, 
+                                                               PatientID2 == as.character(id)))) %>%
+  mutate(PatientID2 = as.character(PatientID2))
 
 ```
 
-### Compare three phase to two phase
+## Summary of three phases
+
+```{r three phase statistics, results = 'asis'}
+#duration, slope, r2, swab to swab, exp(double/half)
+
+#this is for transition
+triphasicFit$temp = NA
+
+feature_table = data.table(
+  'Median duration (range) wk.' = 
+    sapply(c("growth", "middle", "decay"), function(phase) 
+      process_stats_median(subset(durationData, variable == phase)$value/7)),
+  'Median swab change (range) wk.' = 
+    sapply(c("growth", "middle", "decay"), function(ph) 
+      process_stats_median(subset(swabVar, phase == ph & !is.na(change))$change)),
+  'Median slope (range) wk.' = 
+    sapply(c("growth", "middle", "decay"), function(phase) 
+      with(triphasicFit, process_stats_median(get(phase) * 7))),
+  'Median double/half-time (range) wk.' = 
+    sapply(c("double", "temp", "half"), function(phase) 
+      with(triphasicFit, process_stats_median(get(phase)/7))),
+  'Median R-square (range)' = 
+    sapply(c("rsq_1", "rsq_2", "rsq_3"), function(phase) 
+      with(triphasicFit, process_stats_median(get(phase))))
+) %>% t()
+colnames(feature_table) = c("Expansion", "Transition", "Clearance")
+
+print(xtable(feature_table, caption = "Summary of phase features"), 
+      comment = F)
+
+cat("Infant", triphasicFit$PatientID2[which.min(triphasicFit$rsq_1)], "had the lowest expansion R2 of", min(triphasicFit$rsq_1), ".\n")
+low_clear = which(triphasicFit$rsq_3<0.5)
+for(i in 1:length(low_clear)){
+  cat("Infant", triphasicFit$PatientID2[low_clear[i]], "had the a low clearance R2 of", triphasicFit$rsq_3[low_clear[i]], ".\n")
+}
+
+```
+
+## Compare three phase to two phase
+The three phase classification comes from an apparent transition phase between the start of the episode and the peak viral load. In the biphasic classification, expansion phase ends at peak (instead of 1 log before peak). The R-square values are generally worse when we make that assumption.
+
+```{r, results = 'asis'}
+
+biphasicFit = plyr::ldply(unique(CMVPrimaryEpisodes$PatientID2),
+                     function(id) biphasicFit_function(subset(CMVPrimaryEpisodes, 
+                                                               PatientID2 == as.character(id))))
+
+compare_expansion = full_join(select(triphasicFit, PatientID2, rsq_1),
+                              select(biphasicFit, PatientID2, rsq_peak),
+                              by = "PatientID2") %>%
+  mutate(better = rsq_peak < rsq_1, rsq_1 = round(rsq_1, 2))
+
+
+compare_expansion = with(compare_expansion, data.table(
+  'Infant ID' = PatientID2,
+  'Growth to peak' = rsq_peak,
+  'Growth to 1 log before peak' = rsq_1,
+  better = better,
+  'Triphasic > biphasic' = better
+))
+
+print(xtable(select(compare_expansion, -better), caption = "R-square comparing growth in two phase vs three phase classification"), include.rownames = F, comment = F)
+
+cat(sum(compare_expansion$better), "episodes perform better with transition phase")
+
+```
+
+
+## Plot of features
+```{r plots of phase characteristics, fig.width = 12, fig.height = 10}
+
+##### first pos vs peak ########
+firstposPeak = ggplot(data = episodeSummary %>%
+                        reshape2::melt(measure.var = c("firstpos", "peak"),
+                                            value.name = "count", variable.name = "time"),
+                      aes(x = time, y = count)) +
+  geom_boxplot(aes(fill = time)) +
+  scale_fill_manual(guide = F,
+                    values = gray.colors(3, start = 1, end = 0.5, gamma = 2.2, alpha = 0.5)) +
+  scale_x_discrete("", labels = c("First Positive", "Peak")) +
+  scale_y_continuous(expression(paste("log"[10]," CMV DNA conc.")), breaks = 1:10) +
+  theme(
+    text = element_text(family = "Times", size = fontsize),
+    axis.title.y = element_text(size = fontsize - y_adj)
+  )
+
+##### Duration ####
+duration_pl = ggplot(data = subset(durationData, !(variable == "decay" & value == 0)), 
+                     aes(x = variable, y = value/7)) +
+  geom_boxplot(aes(fill = variable)) +
+  scale_fill_manual(guide = F, breaks =  c("growth", "middle", "decay"),
+                    values = c("White", "#CCCCCC80", "#80808080")) +
+  scale_x_discrete("Episode phase", limits = c("growth", "middle", "decay"),
+                   labels = c(phase_names[1:2], "Clearance\n(Censored)")) +
+  scale_y_continuous("Duration (wks)", breaks = 10*0:10)+
+  theme(
+    axis.text.x = element_text(size = fontsize - x_adj),
+    axis.title.x = element_text(size = fontsize - 5),
+    axis.title.y = element_text(size = fontsize - y_adj),
+    text = element_text(family = "Times", size = fontsize))
+
+####### swab to swab variability ########
+swab_pl = ggplot(data = swabVar, aes(x = phase, y = change)) +
+  geom_boxplot(aes(fill = phase)) +
+  scale_fill_manual(guide = F, breaks =  c("growth", "middle", "decay"),
+                    values = c("White", "#CCCCCC80", "#80808080")) +
+  scale_x_discrete("Episode phase", limits = c("growth", "middle", "decay"), labels = phase_names) +
+  scale_y_continuous(expression(paste("Swab to swab change(log"[10]," CMV DNA conc.)")),
+                     limits = c(-3, 3), breaks = -6:6) +
+  geom_hline(aes(yintercept = 0), alpha = 0.5, linetype = "dashed") +
+  geom_text(aes(x = phase, label = count, y = -Inf), vjust = -0.3, 
+            data = swabVar %>% group_by(phase) %>%
+              dplyr::summarize(count = n()))+
+  theme(
+    axis.text.x = element_text(size = fontsize - x_adj),
+    axis.title.x = element_text(size = fontsize - 5),
+    axis.title.y = element_text(size = fontsize - y_adj),
+    text = element_text(family = "Times", size = fontsize))
+
+##### Slope #####
+
+slope_pl = ggplot(data = triphasicFit %>%
+                    reshape2::melt(measure.vars = c("growth", "middle", "decay"),
+                                   value.name = "slope", variable.name = "phase"), 
+                  aes(x = phase, y = slope*7)) +
+  geom_boxplot(aes(fill = phase)) +
+  scale_fill_manual(guide = F, breaks =  c("growth", "middle", "decay"),
+                    values = c("White", "#CCCCCC80", "#80808080")) +
+  scale_x_discrete("Episode phase", limits = c("growth", "middle", "decay"), labels = phase_names) +
+  scale_y_continuous(expression(paste("Estimated weekly change(log"[10]," CMV DNA conc./wk)")),
+                     limits = c(-0.5, 2), breaks = -1:4/2) +
+  geom_hline(aes(yintercept = 0), alpha = 0.5, linetype = "dashed") +
+  theme(
+    axis.text.x = element_text(size = fontsize - x_adj - 0.5),
+    axis.title.y = element_text(size = fontsize - y_adj),
+    axis.title.x = element_text(size = fontsize - 5),
+    text = element_text(family = "Times", size = fontsize))
+
+##### Rsq ######
+rsq_pl =  ggplot(data = triphasicFit %>%
+                   reshape2::melt(measure.vars = c("rsq_1", "rsq_2", "rsq_3"),
+                                  value.name = "rsq", variable.name = "rsqphase"),  
+                 aes(x = rsqphase, y = rsq)) +
+  geom_boxplot(aes(fill = rsqphase)) +
+  scale_fill_manual(guide = F, breaks =  c("growth", "middle", "decay"),
+                    values = gray.colors(3, start = 1, end = 0.5, gamma = 2.2, alpha = 0.5)) +
+  scale_x_discrete("Episode phase", limits = c("rsq_1", "rsq_2", "rsq_3"), labels = phase_names) +
+  scale_y_continuous(expression(paste(R^2)), limits = c(0, 1), breaks = -1:4/2) +
+  theme(
+    axis.text.x = element_text(size = fontsize - x_adj),
+    axis.title.x = element_text(size = fontsize - 5),
+    axis.title.y = element_text(size = fontsize - y_adj),
+    text = element_text(family = "Times", size = fontsize))
+
+##### Doubling and half-life #####
+dbl_pl = ggplot(data = triphasicFit %>%
+                  reshape2::melt(measure.vars = c("double", "half"),
+                                 value.name = "dbl", variable.name = "phase"),
+                aes(x = phase, y = dbl)) +
+  geom_boxplot(aes(fill = phase)) +
+  scale_fill_manual(guide = F, breaks =  c("double", "half"),
+                    values = gray.colors(3, start = 1, end = 0.5, gamma = 2.2, alpha = 0.5)[c(1,3)]) +
+  scale_x_discrete("", limits = c("double", "half"), labels = c("Doubling time", "Half-life")) +
+  scale_y_continuous("Days", breaks = 10 * 0:10) +
+  theme(
+    axis.title.y = element_text(size = fontsize - y_adj),
+    text = element_text(family = "Times", size = fontsize))
+
+phase_feature_plot = plot_grid(firstposPeak, duration_pl, swab_pl, slope_pl, dbl_pl, rsq_pl,
+                    labels = c("A", "B", "C", "D", "E", "F"), nrow = 2,
+                    label_size = 18, hjust = 0)
+
+phase_feature_plot
+
+```
+
+##Cubic model and rebound analysis
 
 
 
-# Saving figures and table (See code)
+
+# Saving figures and table

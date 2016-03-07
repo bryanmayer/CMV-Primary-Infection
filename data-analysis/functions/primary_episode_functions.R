@@ -3,14 +3,32 @@
 
 ## This script contains functions to:
 #1.) extract summary information from the shedding episodes
-#2.) 
-
+#2.) a little spearman bootstrap function used throughout
+#3.) make the three phase classification
 
 # -------- Primary episode processing ----------------
 
-#episodeData makes a data frame listing the episodes and basic attributes
-#otherfunction turns episodeData into time series for further analysis
-#new three phases (growth, transition, clearance)
+# this is called from the main file
+# takes all of the raw time series data and creates summary episode data by patient ID
+create_primary_episodes_fun = function(inData){
+  
+  episodeOut = plyr::ldply(unique(inData$PatientID2), function(id){
+    
+    tempdata = subset(inData, PatientID2 == as.character(id))
+    temp_episode = primary_episode_fun(tempdata)
+    
+    temp_episode$momhiv = tempdata$momhiv[1]
+    
+    return(temp_episode)
+  })
+  
+  episodeOut
+  
+}
+
+#called by create_primary_episodes_fun
+#makes a data frame listing the episodes and basic attributes for 
+#three phases (growth, transition, clearance)
 primary_episode_fun = function(dataIn){
   dataIn = arrange(dataIn, days2)
   
@@ -41,111 +59,44 @@ primary_episode_fun = function(dataIn){
   
 }
 
-#this takes all of the raw time series data and creates episode data by patient ID
-create_primary_episodes_fun = function(inData){
+# -------------- bootstrap spearman for 95% CIs -----------------------------
+boot_fun = function(r, dataIn, conf = 0.95){
   
-  episodeOut = plyr::ldply(unique(inData$PatientID2), function(id){
-    
-    tempdata = subset(inData, PatientID2 == as.character(id))
-    temp_episode = primary_episode_fun(tempdata)
-
-    temp_episode$momhiv = tempdata$momhiv[1]
-    
-    return(temp_episode)
-  })
-  
-  episodeOut
-  
-}
-
-change_firstpos_fun = function(episodeDataTS){
-
-  ldply(unique(episodeDataTS$episodeGroup), function(episodeN){
-    tempdata = subset(episodeDataTS, episodeGroup == episodeN)
-    
-    #only work with uncensored data 
-    if(tempdata$censor[1] != "uncensored" | dim(tempdata)[1] == 1) return(NULL)
-    
-    timeinterval_fromfirst = tail(tempdata$days, -1) - min(tempdata$days)
-    deltacount = tail(tempdata$count, -1) -  head(tempdata$count, -1)
-    
-    data.frame(
-      PatientID2 = tempdata$PatientID2[1],
-      idpar = tempdata$idpar2[1],
-      EpisodeID = episodeN,
-      starting_count = head(tempdata$count, -1),
-      time_from_first = timeinterval_fromfirst,
-      deltacount = deltacount)
-    
-  })
-  
-  change_firstpos = change_firstpos %>% group_by(EpisodeID) %>% dplyr::mutate(lastpos = (time_from_first == max(time_from_first)))
-  change_firstpos$lastpos2 = ifelse(change_firstpos$lastpos, 1, NA)
-
-return(change_firstpos)
-}
-
-change_lastpos_fun = function(episodeDataTS){
-  
-  ldply(unique(episodeDataTS$episodeGroup), function(episodeN){
-    tempdata = subset(episodeDataTS, episodeGroup == episodeN)
-    
-    #only work with uncensored data 
-    if(tempdata$censor[1] != "uncensored" | dim(tempdata)[1] == 1) return(NULL)
-    
-    timeinterval_fromlast = -rev(head(tempdata$days, -1) - max(tempdata$days))
-    deltacount = tail(rev(tempdata$count), -1) -  head(rev(tempdata$count), -1)
-    
-    data.frame(
-      PatientID2 = tempdata$PatientID2[1],
-      EpisodeID = episodeN,
-      idpar = tempdata$idpar2[1],
-      starting_count = rev(tail(tempdata$count, -1)),
-      time_from_last = timeinterval_fromlast,
-      deltacount = deltacount) 
-  })
-  
-  change_lastpos = change_lastpos %>% group_by(EpisodeID) %>% dplyr::mutate(firstpos = (time_from_last == max(time_from_last)))
-  change_lastpos$firstpos2 = ifelse(change_lastpos$firstpos, 1, NA)
-
-  return(change_lastpos)
-}
-
-plot_first_peak_last_blip = function(inputEpisodeData, hivsplit = F, virus = "CMV", gtitle = NULL, ylimits = c(1.8, 5.75)){
-  
-  first_last_posdata = melt(inputEpisodeData,
-                            measure.vars = c("firstposR", "peak", "lastposR", "blipValue"), 
-                            value.name = "count", variable.name = "category")
-  
-  if(hivsplit) {
-    first_last_posdataTXT = ddply(first_last_posdata, .(category, momhiv), summarize, total = sum(!is.na(count)))
-    plot = ggplot(data = first_last_posdata, aes(x = category, y = count, fill = momhiv)) + 
-      geom_boxplot(alpha = 0.5) +
-      scale_fill_manual("Mom HIV", values = c("khaki1", "grey")) +
-      scale_y_continuous(paste(virus, "DNA concentration"), breaks = 2:9, limits = ylimits) +
-      scale_x_discrete("", breaks = c("firstposR", "peak", "lastposR", "blipValue"),
-                       labels = c("First +", "Peak", "Last +", "Blip")) +
-      geom_vline(x = 3.5) +
-      geom_hline(yintercept = 2.176, linetype = "dashed", size = 1) + 
-      geom_text(data = first_last_posdataTXT, aes(x = category, y = 2, label = total), 
-                family = "Times", position = position_dodge(width = 0.75)) +
-      ggtitle(gtitle)
-      theme(text = element_text(family = "Times", size = 20))
-  } else {
-    first_last_posdataTXT = ddply(first_last_posdata, .(category), summarize, total = sum(!is.na(count)))
-    plot = ggplot(data = first_last_posdata, aes(x = category, y = count)) + geom_boxplot(fill = "grey", alpha = 0.5) +
-      scale_y_continuous(paste(virus, "DNA concentration"), breaks = 2:9, limits = ylimits) +
-      scale_x_discrete("", breaks = c("firstposR", "peak", "lastposR", "blipValue"),
-                       labels = c("First +", "Peak", "Last +", "Blip")) +
-      geom_vline(x = 3.5) +
-      geom_hline(yintercept = 2.176, linetype = "dashed", size = 1) + 
-      geom_text(data = first_last_posdataTXT, aes(x = category, y = 2, label = total), family = "Times") +
-      theme(text = element_text(family = "Times", size = 20))
+  pair_cor = function(d){
+    cor(d[,1], d[,2], method = "spearman")
   }
   
-  return(plot)
+  size = dim(dataIn)[1]
+  output = rep(NA, length = r)
+  for(i in 1:r){
+    sample_set = dataIn[sample(size, replace = T) ,]     
+    output[i] = pair_cor(sample_set)
+  }
+  lowerCI = quantile(output, probs = (1 - conf)/2)
+  upperCI = quantile(output, probs = (1 - (1 - conf)/2))
+  sig = if((lowerCI < 0 & upperCI < 0) | (lowerCI > 0 & upperCI > 0)) "*" else " "
   
+  group1 = as.numeric(unlist(dataIn[,1]))
+  group2 =  as.numeric(unlist(dataIn[,2]))
+  base_test= cor.test(group1, group2, method = "spearman")$p.value
+  
+  data.frame(
+    pair1 = names(dataIn)[1],
+    pair2 = names(dataIn)[2],
+    base_cor = pair_cor(dataIn),
+    base_pvalue = as.numeric(base_test),
+    base_test = if(base_test < 0.05) "*" else " ",
+    boot_mean = mean(output),
+    boot_median = median(output),
+    confidence = conf,
+    boot_lowerCI = lowerCI,
+    boot_upperCI = upperCI,
+    sig = sig
+  )
 }
+
+
+# -------------- functions for analysis of each phase (regressions) ----------------
 
 biphasicFit_function = function(dataIn){
   #sort by days so things are in chronological order
@@ -159,20 +110,12 @@ biphasicFit_function = function(dataIn){
   
   #Alt models
   model1A = lm(count ~ days2, data = dataIn[1:whenPeakInd, ])
-  model2A = lm(count ~ days2, data = dataIn[max(peak_range):dim(dataIn)[1], ])
-  
-  model1 = lm(count ~ days2, data = dataIn[1:min(peak_range), ])
-  model2 = lm(count ~ days2, data = dataIn[whenPeakInd:dim(dataIn)[1], ])
+  model2A = lm(count ~ days2, data = dataIn[whenPeakInd:dim(dataIn)[1], ])
   
   with(dataIn, data.frame(
     PatientID2 = PatientID2[1],
-    PatientID22 = PatientID22[1],
-    rsq_topeak = round(summary(model1)$r.sq, 2),
-    rsq_growth = round(summary(model1A)$r.sq, 2),
-    rsq_GrowthToPeak = round(summary(model1)$r.sq/summary(model1A)$r.sq, 2),
-    rsq_frompeak = round(summary(model2)$r.sq, 2),
-    rsq_clr = round(summary(model2A)$r.sq, 2),
-    rsq_ClrToPeak = round(summary(model2)$r.sq/summary(model2A)$r.sq, 2)
+    rsq_peak = round(summary(model1A)$r.sq, 2),
+    rsq_clr = round(summary(model2A)$r.sq, 2)
   ))
 }
   
@@ -197,7 +140,6 @@ triphasicFit_function = function(dataIn, old = F){
   model3 = lm(count ~ days2, data = dataIn[last_peak:totaltimes, ])
   
   output = with(dataIn, data.frame(
-    PatientID2 = PatientID2[1],
     PatientID2 = PatientID2[1],
     momhiv = momhiv[1],
     age = days_dob[1],
@@ -225,6 +167,41 @@ triphasicFit_function = function(dataIn, old = F){
   output
 }
 
+swab2swab_function = function(dataIn){
+  #sort by days so things are in chronological order
+  dataIn = arrange(dataIn, days2)
+  temp_episode = primary_episode_fun(dataIn)  
+  
+  totaltimes = dim(dataIn)[1]
+  peak = max(dataIn$count)
+  
+  #remove 0
+  dataIn$count[dataIn$count == 0] = NA
+  
+  
+  output = with(dataIn, data.frame(
+    PatientID2 = PatientID2[1],
+    momhiv = momhiv[1],
+    age = days_dob[1],
+    days = head(days2, -1),
+    days_change = tail(days2, -1) - head(days2, -1),
+    change = tail(count, -1) - head(count, -1),
+    change_std = 7 * (tail(count, -1) - head(count, -1))/(tail(days2, -1) - head(days2, -1))
+    ))
+  
+  output$phase = sapply(output$days, function(time){
+    if(time < temp_episode$peakphase_start) return("growth")
+    else if (time < temp_episode$peakphase_end) return("middle")
+    else return("decay")
+  })
+  
+  output$phase = factor(output$phase, levels = c("growth", "middle", "decay"), ordered = T)
+    
+  output
+}
+
+
+
 triphasicCI_function = function(dataIn, old = F){
   
   #sort by days so things are in chronological order
@@ -238,7 +215,7 @@ triphasicCI_function = function(dataIn, old = F){
   first_peak = with(temp_episode, which(dataIn$days2 == peakphase_start))
   last_peak =  with(temp_episode, which(dataIn$days2 == peakphase_end))
   
-
+  
   #remove 0
   dataIn$count[dataIn$count == 0] = NA
   dataIn$weeks = dataIn$days2/7
@@ -279,43 +256,6 @@ triphasicCI_function = function(dataIn, old = F){
   
   output
 }
-
-swab2swab_function = function(dataIn, old = F){
-  #sort by days so things are in chronological order
-  dataIn = arrange(dataIn, days2)
-  
-  if(old){temp_episode = primary_episode_fun_old(dataIn)
-  }else temp_episode = primary_episode_fun(dataIn)  
-  
-  totaltimes = dim(dataIn)[1]
-  peak = max(dataIn$count)
-  
-  #remove 0
-  dataIn$count[dataIn$count == 0] = NA
-  
-  
-  output = with(dataIn, data.frame(
-    PatientID = PatientID[1],
-    momhiv = momhiv[1],
-    age = days_dob[1],
-    days = head(days2, -1),
-    days_change = tail(days2, -1) - head(days2, -1),
-    change = tail(count, -1) - head(count, -1),
-    change_std = 7 * (tail(count, -1) - head(count, -1))/(tail(days2, -1) - head(days2, -1))
-    ))
-  
-  output$phase = sapply(output$days, function(time){
-    if(time < temp_episode$peakphase_start) return("growth")
-    else if (time < temp_episode$peakphase_end) return("middle")
-    else return("decay")
-  })
-  
-  output$phase = factor(output$phase, levels = c("growth", "middle", "decay"), ordered = T)
-    
-  output
-}
-
-
 
 
 
@@ -597,59 +537,5 @@ plot_cube_fit = function(pid){
   
 }
 
-plot_loess_fit = function(pid){
-  decay_data = subset(CMVPrimaryEpisodes, PatientID == pid & count > 0 &
-                        days2 >= subset(episodeSummary, PatientID == pid)$peakphase_end)
-
-  lo_spline = with(decay_data, loess(count ~ days2, span = 1, degree = 2))
-  
-  predData = data.frame(
-    days2 = with(decay_data, seq(min(days2), max(days2), 1)),
-    count = predict(lo_spline, with(decay_data, seq(min(days2), max(days2), 1)))
-  )
-  
-  ggplot(data = decay_data, aes(x = days2, y = count)) + geom_point() +
-    geom_line(data = predData) +
-    geom_vline(xintercept = with(decay_data, days2[which(count == min(count))]),
-               linetype = "dotted") +
-    geom_vline(xintercept = with(predData, days2[which(count == min(count))])) +
-    scale_colour_discrete(guide = F) + ggtitle(pid)
-}
 
 
-## correlation boostrap ##
-
-boot_fun = function(r, dataIn, conf = 0.95){
-  
-  pair_cor = function(d){
-    cor(d[,1], d[,2], method = "spearman")
-  }
-  
-  size = dim(dataIn)[1]
-  output = rep(NA, length = r)
-  for(i in 1:r){
-    sample_set = dataIn[sample(size, replace = T) ,]     
-    output[i] = pair_cor(sample_set)
-  }
-  lowerCI = quantile(output, probs = (1 - conf)/2)
-  upperCI = quantile(output, probs = (1 - (1 - conf)/2))
-  sig = if((lowerCI < 0 & upperCI < 0) | (lowerCI > 0 & upperCI > 0)) "*" else " "
-  
-  group1 = as.numeric(unlist(dataIn[,1]))
-  group2 =  as.numeric(unlist(dataIn[,2]))
-  base_test= cor.test(group1, group2, method = "spearman")$p.value
-  
-  data.frame(
-    pair1 = names(dataIn)[1],
-    pair2 = names(dataIn)[2],
-    base_cor = pair_cor(dataIn),
-    base_pvalue = as.numeric(base_test),
-    base_test = if(base_test < 0.05) "*" else " ",
-    boot_mean = mean(output),
-    boot_median = median(output),
-    confidence = conf,
-    boot_lowerCI = lowerCI,
-    boot_upperCI = upperCI,
-    sig = sig
-  )
-}
