@@ -89,7 +89,8 @@ full_data = subset(all_infant_data, Use == "Y" & last_swab_day > 150 &  PatientI
   group_by(PatientID2) %>%
   mutate(
     adjusted = any(days_orig != days2),
-    diff_day = days_orig[days2 == 0]
+    diff_day = days_orig[days2 == 0],
+    orig_infection_day = days2[days_orig == 0]
     )
 ```
 
@@ -109,7 +110,12 @@ ggplot(data = subset(full_data, !adjusted), aes(x = days2, y = count)) +
 
 ###B. Infants with adjusted infection times
 
-```{r adjusted infant data, fig.height=10, fig.width = 8}
+```{r adjusted infant data, fig.height=10, fig.width = 8, results = 'asis'}
+
+adj_tbl = subset(full_data, adjusted) %>% group_by(PatientID2, orig_infection_day) %>%
+               summarize() %>% rename(days_relative_est_infection_time = orig_infection_day)
+  
+print(xtable(adj_tbl, caption = "adjusted times"), include.rownames = F, comment = F)
 
 ggplot(data = subset(full_data, adjusted), aes(x = days2, y = count)) +
   geom_point() +

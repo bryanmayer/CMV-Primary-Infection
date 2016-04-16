@@ -406,9 +406,137 @@ phase_feature_plot
 
 ```
 
-##Cubic model and rebound analysis
+
+## Cubic model of clearance and rebound analysis
+
+```{r cubic analysis, fig.align = 'center', fig.height=4}
+
+cubic_fit = plyr::ldply(unique(CMVPrimaryEpisodes$PatientID2), function(pid) cubic_decay_fit(pid))
+
+ggplot(data = subset(CMVPrimaryEpisodes, PatientID2 %in% c("H", "L") & count > 0), aes(x = days2, y = count2)) +
+  geom_line() + geom_point() + facet_wrap(~PatientID2, nrow = 2) +
+  ggtitle("Borderline deceleration cases")
+
+cubic_fit$critPoint2[is.na(cubic_fit$critPoint2)] = Inf
+
+cubic_fit$rebound_cat = with(cubic_fit, ifelse(critPoint2 < last_day, 2,
+                                               ifelse(last_day - inf_point < 100 | !is.na(minPoint2), 1, 0)))
+cubic_fit$frompeak = with(cubic_fit,
+                             ifelse(rebound_cat == 2, critPoint2 - peak_day, last_day - peak_day))
+
+minEpCrit = with(subset(cubic_fit, rebound_cat == 2), critPoint2[which(critPoint2 == min(critPoint2))])
+maxEpCrit = with(subset(cubic_fit, rebound_cat == 2), critPoint2[which(critPoint2 == max(critPoint2))])
+minPeakCrit = with(subset(cubic_fit, rebound_cat == 2), frompeak[which(frompeak == min(frompeak))])
+maxPeakCrit = with(subset(cubic_fit, rebound_cat == 2), frompeak[which(frompeak == max(frompeak))])
+
+cubic_fit$max_day = with(cubic_fit, ifelse(rebound_cat == 2, critPoint2, last_day))
+
+rebound_pl = ggplot(data = cubic_fit, aes(x = max_day, y = frompeak)) +
+  geom_vline(aes(xintercept = minEpCrit), linetype = 1) +
+  geom_vline(aes(xintercept = maxEpCrit), linetype = 1, colour = "red") +
+  geom_hline(aes(yintercept = minPeakCrit), linetype = 2) +
+  geom_hline(aes(yintercept = maxPeakCrit), linetype = 2, colour = "red") +
+  geom_point(aes(shape = factor(rebound_cat)), size = 10, position = position_dodge(width = 0.25), fill = "#80808080") +
+  scale_shape_manual("", values = c(21, 24, 22),
+                     breaks = 0:2, labels = c("No rebound", "Deceleration",
+                                              "Rebound")) +
+  scale_y_continuous("Days from start of clearance (peak)", breaks = 100*0:7, limits = c(0, 675)) +
+  scale_x_continuous("Days from start of infection", breaks = 100*0:8, limits = c(200, 775)) +
+  geom_text(aes(label = PatientID2), size = 7) +
+  theme(
+    text = element_text(family = "Times"),
+    legend.position = "top",
+    legend.key = element_blank())
+
+rebound_pl
+
+```
+
+## Correlation analysis
+
+### Age and features
+
+```{r correlation analysis, results = 'asis', message=F}
+correlation_data = select(triphasicFit, PatientID2, peak, first_peak_day, high_shed_length, decay_length) %>%
+  full_join(readr::read_csv("../data/age_data.csv"))
+
+#names(compare_data) = c("Age (days)", "Peak", "Growth duration\n(days)", "Transition\nduration (days)", "Clearance\nduration (days)")
+variable_set = c("age", "peak", "first_peak_day", "high_shed_length", "decay_length")
+names_set =  c("Age (days)", "Peak", "Expansions days", "Transition days", "Clearance days")
+rename_set = data.frame(var_name = variable_set, label_name = names_set, stringsAsFactors = F)
+
+all_pairs = combn(variable_set, 2)
 
 
+results_files = list.files("results-data/")
+
+if(!any(grepl("bootstrap_results_spearman.csv", results_files))){
+  library(doParallel)
+  registerDoParallel(cores = 8)
+  
+  boot_samples = ldply(1:dim(all_pairs)[2], function(pair){
+    pair_data = select(correlation_data, get(all_pairs[1, pair]), get(all_pairs[2, pair]))
+    boot_fun(10000, pair_data)
+  }, .parallel = T)
+  readr::write_csv(boot_samples, "results-data/bootstrap_results_spearman.csv")
+  
+} else boot_samples = readr::read_csv("results-data/bootstrap_results_spearman.csv")
+
+
+if(!any(grepl("bootstrap_results_noageoutliers_spearman.csv", results_files))){
+  library(doParallel)
+  registerDoParallel(cores = 8)  
+  
+  boot_samples_ageoutliers = ldply(1:dim(all_pairs)[2], function(pair){
+    pair_data = select(subset(correlation_data, age < 150), get(all_pairs[1, pair]), get(all_pairs[2, pair]))
+    boot_fun(10000, pair_data)
+  }, .parallel = T)
+  readr::write_csv(boot_samples_ageoutliers, "results-data/bootstrap_results_noageoutliers_spearman.csv")
+  
+} else boot_samples_ageoutliers = readr::read_csv("results-data/bootstrap_results_noageoutliers_spearman.csv")
+
+
+process_correlation_results = function(raw_boot_in){
+  raw_boot_in$pair1 = sapply(raw_boot_in$pair1, function(pair_name) rename_set$label_name[rename_set$var_name == pair_name],
+                             USE.NAMES = F)
+  raw_boot_in$pair2 = sapply(raw_boot_in$pair2, function(pair_name) rename_set$label_name[rename_set$var_name == pair_name],
+                             USE.NAMES = F)
+  raw_boot_in = select(raw_boot_in, pair1, pair2, base_cor, base_pvalue, boot_median, boot_lowerCI, boot_upperCI)
+  names(raw_boot_in) <- c("Pair1", "Pair2", "raw_cor", "p_value", "boot_cor", "boot_lower95CI", "boot_upper95CI")
+  raw_boot_in
+}
+
+print(xtable(process_correlation_results(boot_samples_ageoutliers), digits = 3, 
+             caption = "Spearman Correlations - excluded 2 older infants. Bootstrap takes median."), comment = F, include.rownames = F)
+
+print(xtable(process_correlation_results(boot_samples), digits = 3, 
+             caption = "Spearman Correlations - all data. Bootstrap takes median."),
+      comment = F, include.rownames = F)
+
+
+```
+
+### Mother HIV
+
+```{r momhiv correlations, results = 'asis'}
+momhiv_ttests = plyr::ldply(variable_set, function(var){
+  reg_formula = as.formula(paste(var, "~momhiv"))
+  output = broom::tidy(lm(reg_formula, data = triphasicFit)) %>%
+    mutate(outcome = rename_set$label_name[rename_set$var_name == var])
+  select(subset(output, term != "(Intercept)"), outcome, estimate, p.value)
+})
+
+
+print(xtable(momhiv_ttests, digits = 3, 
+             caption = "Linear model (unadjusted) with momhiv (reference = neg) as predictor."), comment = F, include.rownames = F)
+
+```
 
 
 # Saving figures and table
+
+
+```{r}
+cubic_table =  plyr::ldply(unique(CMVPrimaryEpisodes$PatientID), function(pid) cubic_decay_fit_table(pid))
+
+```
