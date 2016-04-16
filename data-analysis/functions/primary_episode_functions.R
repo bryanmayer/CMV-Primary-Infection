@@ -259,13 +259,114 @@ triphasicCI_function = function(dataIn, old = F){
 
 
 
+
+#cubic fit 
+cubic_decay_fit = function(pid){
+  
+  if(with(subset(episodeSummary, PatientID2 == pid), duration == peakphase_end)) return(NULL)
+  
+  decay_data = subset(CMVPrimaryEpisodes, PatientID2 == pid & count > 0 &
+                        days2 >= subset(episodeSummary, PatientID2 == pid)$peakphase_end)
+  decay_data$days_sq = decay_data$days2 * decay_data$days2
+  decay_data$days_cb = decay_data$days2 * decay_data$days2 * decay_data$days2
+  
+  model2 = lm(count ~ days2 + days_sq + days_cb, data = decay_data)
+    
+  last_day =  max(decay_data$days2)
+  
+  quad_test = function(a, b, c) (b^2 - 4*a*c) > 0
+  
+  quad_form = function(a,b,c) (-b + c(-1, 1) * sqrt(b^2 - 4*a*c)) / (2 * a)
+  
+  a = 3 * unname(model2$coef[4])
+  b = 2 * unname(model2$coef[3])
+  c = unname(model2$coef[2])
+  
+  if(quad_test(a,b,c)) critPoints = quad_form(a,b,c) else critPoints = NA
+  
+  inf_point = -b / (2 * a)
+  
+  last_model_count = predict(model2, data.frame(days2 = last_day, days_sq = last_day^2, days_cb = last_day^3))
+  
+    data.frame(
+    PatientID2 = pid,
+    cube_decay1 = unname(model2$coef[2]),
+    cube_decay2 = unname(model2$coef[3]),
+    cube_decay3 = unname(model2$coef[4]),
+    cube_rsq = summary(model2)$r.sq,
+    peak_day = with(subset(episodeSummary, PatientID2 == pid), whenmax),
+    peak_end = with(subset(episodeSummary, PatientID2 == pid), peakphase_end),
+    critPoint1 = critPoints[1],
+    minPoint1 = (2*a*critPoints[1] + b) > 0,
+    critPoint2 = critPoints[2],
+    minPoint2 = (2*a*critPoints[2] + b) > 0,
+    inf_point = inf_point,
+    concave_after = (2 * a * (inf_point + 1) +  b) < 0,
+    last_day = last_day,
+    min_count = min(decay_data$count),
+    last_count = tail(decay_data$count, 1),
+    last_model_count = last_model_count
+  )
+  
+}
+
+cubic_decay_fit_table =  function(pid){
+
+  decay_data = subset(CMVPrimaryEpisodes, PatientID2 == pid & count > 0 &
+                        days2 >= subset(episodeSummary, PatientID2 == pid)$peakphase_end)
+  
+  when_peak = subset(episodeSummary, PatientID2 == pid)$whenmax
+  
+  decay_data$days_sq = decay_data$days2 * decay_data$days2
+  decay_data$days_cb = decay_data$days2 * decay_data$days2 * decay_data$days2
+  model2 = lm(count ~ days2 + days_sq + days_cb, data = decay_data)
+  
+  quad_test = function(a, b, c) (b^2 - 4*a*c) > 0
+  quad_form = function(a,b,c) (-b + c(-1, 1) * sqrt(b^2 - 4*a*c)) / (2 * a)
+  second_der = function(x, a, b) 2 * a * x + b
+  
+  #note the cubic polynomial coef are already included
+  a = 3 * unname(model2$coef[4])
+  b = 2 * unname(model2$coef[3])
+  c = unname(model2$coef[2])
+  inf_point = -b / (2 * a)
+  if(quad_test(a,b,c)) {
+    critPoints = quad_form(a,b,c) 
+    which_max = which((2*a*critPoints + b) > 0)
+    }else {
+      critPoints = NA
+      which_max = NA
+    }
+  
+  rebound = if(second_der(inf_point + 10, a, b) > 0) {
+    if(max(decay_data$days2) - critPoints[which_max] > 0) "**" else "*"
+  }else " "
+  
+  if(rebound == " " & max(decay_data$days2) - inf_point < 100) rebound="*"
+  
+  data.frame(
+    PatientID2 = decay_data$PatientID2[1],
+    #decel =  "*",
+    rebound = rebound, 
+    inflection_point = as.character(round(inf_point, 0)),
+    switch_pos = second_der(inf_point + 10, a, b) > 0,
+    min_point = round(critPoints[which_max], 0),
+    min_point_peak = round(critPoints[which_max], 0) - round(when_peak, 0),
+    final_day = (round(max(decay_data$days2), 0))
+    )
+  
+}
+
+# --------------- Plot functions to validate fits of phases and cubic models -------
+
+
 tri_plots_fun = function(triphasicFit) {
-  llply(unique(triphasicFit$PatientID), function(id){
-    temp = subset(CMVPrimaryEpisodes, PatientID == id)
+  llply(unique(triphasicFit$PatientID2), function(id){
+    temp = subset(CMVPrimaryEpisodes, PatientID2 == id)
     #recode zeros as missing
     temp$count[temp$count == 0] = NA
     
-    epfit = subset(triphasicFit, PatientID == id)
+    epfit = subset(triphasicFit, PatientID2 == id)
     
     #using max avg r2
     model1 = lm(count ~ days2, data = temp[1:epfit$growth_i, ])
@@ -298,218 +399,12 @@ tri_plots_fun = function(triphasicFit) {
 }
 
 
-quadratic_decay_fit = function(pid){
-  
-  
-  if(with(subset(episodeSummary, PatientID == pid), duration == peakphase_end)) return(NULL)
-  
-  decay_data = subset(CMVPrimaryEpisodes, PatientID == pid & count > 0 &
-                        days2 >= subset(episodeSummary, PatientID == pid)$peakphase_end)
-  decay_data$days_sq = decay_data$days2 * decay_data$days2
-  model1 = lm(count ~ days2, data = decay_data)
-  model2 = lm(count ~ days2 + days_sq, data = decay_data)
-
-  last_day =  max(decay_data$days2)
-  minPoint = -unname(model2$coef[2])/(2 * unname(model2$coef[3]))
-  last_model_count = predict(model2, data.frame(days2 = last_day, days_sq = last_day^2))
-  
-  data.frame(
-    PatientID = pid,
-    simple_decay = unname(model1$coef[2]),
-    simple_rsq = summary(model1)$r.sq,
-    quad_decay1 = unname(model2$coef[2]),
-    quad_decay2 = unname(model2$coef[3]),
-    quad_pvalue = as.data.frame(summary(model2)$coef)$Pr[3],
-    quad_rsq = summary(model2)$r.sq,
-    peak_day = with(subset(episodeSummary, PatientID == pid), whenmax),
-    peak_end = with(subset(episodeSummary, PatientID == pid), peakphase_end),
-    minPoint = minPoint,
-    last_day = last_day,
-    min_count = min(decay_data$count),
-    last_count = tail(decay_data$count, 1),
-    min_model_count = ifelse(minPoint < last_day, 
-                             predict(model2, data.frame(days2 = minPoint, days_sq = minPoint^2)), 
-                             last_model_count),
-    last_model_count = last_model_count
-  )
-
-}
-
-quadratic_decay_fit_table =  function(pid){
-  
-  
-  if(with(subset(episodeSummary, PatientID == pid), duration == peakphase_end)) return(NULL)
-  
-  decay_data = subset(CMVPrimaryEpisodes, PatientID == pid & count > 0 &
-                        days2 >= subset(episodeSummary, PatientID == pid)$peakphase_end)
-  
-  decay_data$weeks = decay_data$days2/7
-  decay_data$weeks_sq = decay_data$weeks * decay_data$weeks
-  model1 = lm(count ~ weeks, data = decay_data)
-  model2 = lm(count ~ weeks + weeks_sq, data = decay_data)
-  
-  last_day =  max(decay_data$days2)
-  minPoint = -unname(model2$coef[2])/(2 * unname(model2$coef[3])) * 7
-  #last_model_count = predict(model2, data.frame(days2 = last_day, days_sq = last_day^2))
-  quad_est = round(1000*unname(model2$coef[3]), 2)
-  quad_estL = round(1000*confint(model2)[3,1], 2)
-  quad_estH = round(1000*confint(model2)[3,2], 2)
-  
-  quadF = paste(quad_est, " (", quad_estL, ", ", quad_estH, ")", sep = "")
-    
-    
-  data.frame(
-    PatientID2 = decay_data$PatientID2[1],
-    quad_est = quadF,
-    #quad_lower = confint(model2)[3,1],
-    #quad_upper = confint(model2)[3,2],
-    quad_rsq = round(summary(model2)$r.sq, 2),
-    minPoint = as.character(round(minPoint, 0)),
-    last_day = as.character(last_day),
-    diff = if(unname(model2$coef[3]) > 0) round(last_day - minPoint, 0) else NA,
-    rebound = minPoint < last_day
-  )
-  
-}
-
-plot_quad_fit = function(pid){
-  
-  if(with(subset(episodeSummary, PatientID == pid), duration == peakphase_end)) return(NULL)
-  
-  decay_data = subset(CMVPrimaryEpisodes, PatientID == pid & count > 0 &
-                        days2 >= subset(episodeSummary, PatientID == pid)$peakphase_end)
-  decay_data$days_sq = decay_data$days2 * decay_data$days2
-  model1 = lm(count ~ days2, data = decay_data)
-  model2 = lm(count ~ days2 + days_sq, data = decay_data)
-  
-  days = seq(min(decay_data$days2), max(decay_data$days2), length = 100)
-  temp = data.frame(
-    days2 = days,
-    days_sq = days * days)
-  
-  predData1 = data.frame(
-    days2 = days,
-    count = predict(model1, temp),
-    model = "simple")
-  predData2 = data.frame(
-    days2 = days,
-    count = predict(model2, temp),
-    model = "quadratic")
-  
-  predData = rbind(predData1, predData2)
-  
-  ggplot(data = decay_data, aes(x = days2, y = count)) + geom_point() +
-    geom_line(data = predData, aes(colour = model)) +
-    geom_vline(xintercept = with(decay_data, days2[which(count == min(count))]),
-              linetype = "dotted") +
-    geom_vline(xintercept = with(subset(predData, model == "quadratic"), days2[which(count == min(count))])) +
-    scale_colour_discrete(guide = F) + ggtitle(pid)
-  
-}
-
-#cubic fit 
-cubic_decay_fit = function(pid){
-  
-  if(with(subset(episodeSummary, PatientID == pid), duration == peakphase_end)) return(NULL)
-  
-  decay_data = subset(CMVPrimaryEpisodes, PatientID == pid & count > 0 &
-                        days2 >= subset(episodeSummary, PatientID == pid)$peakphase_end)
-  decay_data$days_sq = decay_data$days2 * decay_data$days2
-  decay_data$days_cb = decay_data$days2 * decay_data$days2 * decay_data$days2
-  
-  model2 = lm(count ~ days2 + days_sq + days_cb, data = decay_data)
-    
-  last_day =  max(decay_data$days2)
-  
-  quad_test = function(a, b, c) (b^2 - 4*a*c) > 0
-  
-  quad_form = function(a,b,c) (-b + c(-1, 1) * sqrt(b^2 - 4*a*c)) / (2 * a)
-  
-  a = 3 * unname(model2$coef[4])
-  b = 2 * unname(model2$coef[3])
-  c = unname(model2$coef[2])
-  
-  if(quad_test(a,b,c)) critPoints = quad_form(a,b,c) else critPoints = NA
-  
-  inf_point = -b / (2 * a)
-  
-  last_model_count = predict(model2, data.frame(days2 = last_day, days_sq = last_day^2, days_cb = last_day^3))
-  
-    data.frame(
-    PatientID = pid,
-    PatientID2 =  PatientID_key$newID[ which(PatientID_key$originalID == as.character(pid))],
-    cube_decay1 = unname(model2$coef[2]),
-    cube_decay2 = unname(model2$coef[3]),
-    cube_decay3 = unname(model2$coef[4]),
-    cube_rsq = summary(model2)$r.sq,
-    peak_day = with(subset(episodeSummary, PatientID == pid), whenmax),
-    peak_end = with(subset(episodeSummary, PatientID == pid), peakphase_end),
-    critPoint1 = critPoints[1],
-    minPoint1 = (2*a*critPoints[1] + b) > 0,
-    critPoint2 = critPoints[2],
-    minPoint2 = (2*a*critPoints[2] + b) > 0,
-    inf_point = inf_point,
-    concave_after = (2 * a * (inf_point + 1) +  b) < 0,
-    last_day = last_day,
-    min_count = min(decay_data$count),
-    last_count = tail(decay_data$count, 1),
-    last_model_count = last_model_count
-  )
-  
-}
-
-cubic_decay_fit_table =  function(pid){
-
-  decay_data = subset(CMVPrimaryEpisodes, PatientID == pid & count > 0 &
-                        days2 >= subset(episodeSummary, PatientID == pid)$peakphase_end)
-  
-  when_peak = subset(episodeSummary, PatientID == pid)$whenmax
-  
-  decay_data$days_sq = decay_data$days2 * decay_data$days2
-  decay_data$days_cb = decay_data$days2 * decay_data$days2 * decay_data$days2
-  model2 = lm(count ~ days2 + days_sq + days_cb, data = decay_data)
-  
-  quad_test = function(a, b, c) (b^2 - 4*a*c) > 0
-  quad_form = function(a,b,c) (-b + c(-1, 1) * sqrt(b^2 - 4*a*c)) / (2 * a)
-  second_der = function(x, a, b) 2 * a * x + b
-  
-  #note the cubic polynomial coef are already included
-  a = 3 * unname(model2$coef[4])
-  b = 2 * unname(model2$coef[3])
-  c = unname(model2$coef[2])
-  inf_point = -b / (2 * a)
-  if(quad_test(a,b,c)) {
-    critPoints = quad_form(a,b,c) 
-    which_max = which((2*a*critPoints + b) > 0)
-    }else {
-      critPoints = NA
-      which_max = NA
-    }
-  
-  rebound = if(second_der(inf_point + 10, a, b) > 0) {
-    if(max(decay_data$days2) - critPoints[which_max] > 0) "**" else "*"
-  }else " "
-  
-  data.frame(
-    PatientID2 = decay_data$PatientID2[1],
-    decel =  "*",
-    rebound = rebound, 
-    inflection_point = as.character(round(inf_point, 0)),
-    switch_pos = second_der(inf_point + 10, a, b) > 0,
-    min_point = round(critPoints[which_max], 0),
-    min_point_peak = round(critPoints[which_max], 0) - round(when_peak, 0),
-    final_day = (round(max(decay_data$days2), 0))
-    )
-  
-}
-
-
 plot_cube_fit = function(pid){
   
-  if(with(subset(episodeSummary, PatientID == pid), duration == peakphase_end)) return(NULL)
+  if(with(subset(episodeSummary, PatientID2 == pid), duration == peakphase_end)) return(NULL)
   
-  decay_data = subset(CMVPrimaryEpisodes, PatientID == pid & count > 0 &
-                        days2 >= subset(episodeSummary, PatientID == pid)$peakphase_end)
+  decay_data = subset(CMVPrimaryEpisodes, PatientID2 == pid & count > 0 &
+                        days2 >= subset(episodeSummary, PatientID2 == pid)$peakphase_end)
   decay_data$days_sq = decay_data$days2 * decay_data$days2
   decay_data$days_cb = decay_data$days2 * decay_data$days2 * decay_data$days2
   
