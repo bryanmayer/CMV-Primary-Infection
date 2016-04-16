@@ -1,21 +1,21 @@
-"","PatientID2","Use","Comment"
-"1","A","Y","Episode starts a few days later"
-"2","B","Y","some zeros"
-"3","C","Y","Perfect, has one mid zero"
-"4","D","Y","Perfect"
-"5","E","Y","Perfect"
-"6","F","Y","Perfect"
-"7","G","Y","Perfect"
-"8","H","Y","Perfect, has one mid zero, starts before infection date"
-"9","I","Y","Perfect"
-"10","J","Y","Perfect"
-"11","K","Y","Perfect, might start earlier"
-"12","L","Y","Perfect"
-"13","M","Y","Perfect"
-"14","N","Y","Starts later"
-"15","O","Y","Only first episode"
-"16","P","Y","Unusual"
-"17","Q","Y","Weird"
-"18","R","N","Not enough data"
-"19","S","N","Not enough data"
-"20","T","Y","Low data"
+,PatientID2,Use,Episode starts on infection day?,Notes,,,,,,
+1,A,Y,N,Episode starts a few swabs later,,,,,,
+2,B,Y,Y,Some zeros,,,,,,
+3,C,Y,Y,,,,,,,
+4,D,Y,Y,,,,,,,
+5,E,Y,Y,,,,,,,
+6,F,Y,Y,,,,,,,
+7,G,Y,Y,,,,,,,
+8,H,Y,N,Episode starts before infection date,,,,,,
+9,I,Y,Y,,,,,,,
+10,J,Y,Y,,,,,,,
+11,K,Y,N,Episode starts a few swabs later,,,,,,
+12,L,Y,Y,,,,,,,
+13,M,Y,Y,,,,,,,
+14,N,Y,N,Episode starts a few swabs later,,,,,,
+15,O,Y,Y,Unusual episode; has many zeros and seemingly concludes and restarts?,,,,,,
+16,P,Y,,Limited data,,,,,,Unusual
+17,Q,Y,Y,Limited data,,,,,,
+18,R,N,Y,Only 4 weeks of data,,,,,,
+19,S,N,N,Infected on last day of study by plasma defintion; no shedding,,,,,,
+20,T,Y,Y,Limited data,,,,,,
