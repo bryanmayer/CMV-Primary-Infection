@@ -8,6 +8,8 @@ This folder contains the raw data used to create all of the analysis:
 
 4) primary_infection_notes.csv - Notes on visual inspection of primary infection data used to develop criteria for onset of oral shedding episode and for exclusion.
 
+5) age_data.csv - the age data for each of the infants. This variable was calculated manually in the analysis presented in data-analysis/primary_episode_analysis.Rmd.
+
 Data dictionary:
 
 |**Variable name** | **Description** | **Type** | **Categories (if applicable)** |
