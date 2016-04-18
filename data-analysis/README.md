@@ -1,4 +1,4 @@
-This directory contains all of the descriptive analyses of primary episodes:
+This directory contains all of the descriptive analyses of primary episodes. Both .Rmd files contain one or both of save_output_figs and save_output_tables variables. Changing these to TRUE will save (overwrite) figures and tables in the main CMV-Primary-Infection/figures/ and CMV-Primary-Infection/tables/ directories. These objects, as they appear in the repo, were used in the manuscript or supplement.
 
 A) primary_episode_analysis.Rmd - This code will recreate the analysis and results. Corresponding pdf report walks through it. A lot of the code is organizational for making figures and tables. The quantitative code is mostly in the following script:
   - functions/primary_episode_functions.R: This scripts contains functions that perform the following tasks:
