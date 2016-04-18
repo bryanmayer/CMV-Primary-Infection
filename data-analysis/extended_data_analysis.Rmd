@@ -19,7 +19,7 @@ library(readr)
 library(ggplot2)
 library(cowplot)
 
-save_output_figs = F
+save_output_figs = T
 
 all_infant_data = read_csv("../data/complete_episode_data.csv")
 
@@ -90,7 +90,7 @@ full_data = subset(all_infant_data, Use == "Y" & last_swab_day > 150 &  PatientI
   mutate(
     adjusted = any(days_orig != days2),
     diff_day = days_orig[days2 == 0],
-    orig_infection_day = days2[days_orig == 0]
+    adj_infection_day = days2[days_orig == 0]
     )
 ```
 
@@ -112,10 +112,10 @@ ggplot(data = subset(full_data, !adjusted), aes(x = days2, y = count)) +
 
 ```{r adjusted infant data, fig.height=10, fig.width = 8, results = 'asis'}
 
-adj_tbl = subset(full_data, adjusted) %>% group_by(PatientID2, orig_infection_day) %>%
-               summarize() %>% rename(days_relative_est_infection_time = orig_infection_day)
+adj_tbl = subset(full_data, adjusted) %>% group_by(PatientID2, diff_day) %>%
+               summarize() %>% rename(shedding_start_minus_acquisition_day = diff_day)
   
-print(xtable(adj_tbl, caption = "adjusted times"), include.rownames = F, comment = F)
+print(xtable(adj_tbl, caption = "Adjusted times: Days between acquistion time (Gantt et al.) and shedding episode onset (e.g, H's episode appears to start before the defined acquisition time)."), include.rownames = F, comment = F)
 
 ggplot(data = subset(full_data, adjusted), aes(x = days2, y = count)) +
   geom_point() +
@@ -124,9 +124,9 @@ ggplot(data = subset(full_data, adjusted), aes(x = days2, y = count)) +
   scale_x_continuous("Days after infant infection") +
   scale_y_continuous(expression(paste("Log"[10], " CMV DNA conc.")), breaks = 0:9) +
   geom_vline(xintercept = 0, colour = "gray", alpha = 0.75) +
-  geom_vline(data = subset(full_data, adjusted) %>% group_by(PatientID2, diff_day) %>%
+  geom_vline(data = subset(full_data, adjusted) %>% group_by(PatientID2, adj_infection_day) %>%
                summarize(),
-             aes(xintercept = diff_day), linetype = "dashed") +
+             aes(xintercept = adj_infection_day), linetype = "dashed") +
   facet_wrap( ~ PatientID2)
 
 ```
@@ -165,12 +165,12 @@ make_supp_fig = function(excluded_infants){
 supp_fig1 = make_supp_fig(excluded_infants)
 supp_fig1
 
-supp_fig2 = make_supp_fig(subset(excluded_infants, !(PatientID2 == "O" & days2 > 117)))
-supp_fig2
+#supp_fig2 = make_supp_fig(subset(excluded_infants, !(PatientID2 == "O" & days2 > 117)))
+#supp_fig2
 
 if(save_output_figs){
-  ggsave("../figures/supplementary/excluded_infants_fullO.pdf", supp_fig1, height = 4, width = 6)
-  ggsave("../figures/supplementary/excluded_infants.pdf", supp_fig2, height = 4, width = 6)
+  ggsave("../figures/supplementary-figures/excluded_infants.pdf", supp_fig1, height = 4, width = 6)
+  #ggsave("../figures/supplementary/excluded_infants.pdf", supp_fig2, height = 4, width = 6)
 }
 
 ```
