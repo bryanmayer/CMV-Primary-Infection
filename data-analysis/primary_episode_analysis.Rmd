@@ -9,7 +9,7 @@ toc: yes
 ```{r load knitr and set chunk options, echo = F}
 library(knitr)
 opts_chunk$set(warning = FALSE, message = FALSE, echo = FALSE,
-              error = FALSE)
+              error = FALSE, tidy = FALSE)
 ```
 
 ```{r load packages, data, and functions}
@@ -29,6 +29,10 @@ y_adj = 4
 
 load("../data/CMVprimaryEpisode.RData")
 source("functions/primary_episode_functions.R")
+
+#to check and save appropriate tables (to avoid redoing bootstrap analysi)
+results_files = list.files("results-data/")
+
 
 episodeSummary = create_primary_episodes_fun(CMVPrimaryEpisodes)
 
@@ -229,6 +233,29 @@ triphasicFit = plyr::ldply(unique(CMVPrimaryEpisodes$PatientID2),
   mutate(PatientID2 = as.character(PatientID2))
 
 ```
+## Raw results
+### Raw phase regression results
+```{r raw regression results, results = 'asis'}
+#Regression on each phase, note that this add confidence intervals
+triphasicTable = plyr::ldply(unique(CMVPrimaryEpisodes$PatientID2), function(id)
+    phase_regression_table_function(subset(CMVPrimaryEpisodes, PatientID2 == as.character(id))))
+
+print(xtable(select(triphasicTable, PatientID2, expansion_n, 
+                    expansion_slope_95pctCI, expansion_rsq, double_time_days), 
+             caption = "Raw results from expansion phase regression"), 
+      comment = F)
+print(xtable(select(triphasicTable, PatientID2, trans_n, trans_slope_95pctCI, trans_rsq), 
+             caption = "Raw results from transition phase regression"), 
+      comment = F)
+print(xtable(select(triphasicTable, PatientID2, clr_n, clr_slope_days_95pctCI,
+                    half_life_days, clr_rsq), 
+             caption = "Raw results from clearance phase regression"), 
+      comment = F)
+
+if(!any(grepl("phase_regression_results.csv", results_files))) readr::write_csv(triphasicTable,
+                                                                      "results-data/phase_regression_results.csv")
+```
+
 
 ## Summary of three phases
 
@@ -265,7 +292,6 @@ low_clear = which(triphasicFit$rsq_3<0.5)
 for(i in 1:length(low_clear)){
   cat("Infant", triphasicFit$PatientID2[low_clear[i]], "had the a low clearance R2 of", triphasicFit$rsq_3[low_clear[i]], ".\n")
 }
-
 ```
 
 ## Compare three phase to two phase
@@ -299,7 +325,7 @@ cat(sum(compare_expansion$better), "episodes perform better with transition phas
 
 
 ## Plot of features
-```{r plots of phase characteristics, fig.width = 12, fig.height = 10}
+```{r plots of phase characteristics, fig.width = 12, fig.height = 10, fig.pos = 't', results = 'asis'}
 
 ##### first pos vs peak ########
 firstposPeak = ggplot(data = episodeSummary %>%
@@ -457,8 +483,8 @@ rebound_pl
 ### Age and features
 
 ```{r correlation analysis, results = 'asis', message=F}
-correlation_data = select(triphasicFit, PatientID2, peak, first_peak_day, high_shed_length, decay_length) %>%
-  full_join(readr::read_csv("../data/age_data.csv"))
+
+correlation_data = select(triphasicFit, PatientID2, age, peak, first_peak_day, high_shed_length, decay_length)
 
 #names(compare_data) = c("Age (days)", "Peak", "Growth duration\n(days)", "Transition\nduration (days)", "Clearance\nduration (days)")
 variable_set = c("age", "peak", "first_peak_day", "high_shed_length", "decay_length")
@@ -466,9 +492,6 @@ names_set =  c("Age (days)", "Peak", "Expansions days", "Transition days", "Clea
 rename_set = data.frame(var_name = variable_set, label_name = names_set, stringsAsFactors = F)
 
 all_pairs = combn(variable_set, 2)
-
-
-results_files = list.files("results-data/")
 
 if(!any(grepl("bootstrap_results_spearman.csv", results_files))){
   library(doParallel)
@@ -528,15 +551,110 @@ momhiv_ttests = plyr::ldply(variable_set, function(var){
 
 
 print(xtable(momhiv_ttests, digits = 3, 
-             caption = "Linear model (unadjusted) with momhiv (reference = neg) as predictor."), comment = F, include.rownames = F)
+             caption = "Linear model (unadjusted) with momhiv (reference = neg) as predictor."), 
+      comment = F, include.rownames = F)
+
+if(!any(grepl("momhiv_results.csv", results_files))) readr::write_csv(momhiv_ttests,
+                                                                      "results-data/momhiv_results.csv")
 
 ```
 
 
-# Saving figures and table
+# Saving figures and table 
+
+See code, won't save new tables or figures unless the save_output_figs and save_output_tables variables are changed to TRUE.
+
+## Figures
+
+```{r saving figures}
+if(save_output_figs){
+  
+  ##### Figure 1 ########
+  # tracings_grid and ep_plot comes from Overview of the Data section
+  example_ep = ggplot(data = subset(CMVPrimaryEpisodes, PatientID2 == "C" & count > 0),
+                      aes(x = days2, y = count)) +
+    annotate("rect", xmin = -Inf, xmax = 70, ymin = -Inf, ymax = Inf, 
+             fill = "#FFFFFF", colour = NA, alpha = 0.4) +
+    annotate("rect", xmin = 70, xmax = 147, ymin = -Inf, ymax = Inf, 
+             fill = "#CCCCCC", colour = NA, alpha = 0.4) +
+    annotate("rect", xmin = 147, xmax = Inf, ymin = -Inf, ymax = Inf, 
+             fill = "#808080", colour = NA, alpha = 0.4) +
+    geom_point(size = 4) +
+    geom_line(size = 1.5) +
+    scale_x_continuous("Days from start of infection",breaks = 100*0:600, expand = c(0.01, 0.01)) +
+    scale_y_continuous(expression(paste("Log"[10]," CMV DNA conc.")), breaks = 0:9) +
+    theme(
+      text = element_text(family = "Times", size = fontsize))
+
+  ep_grids = plot_grid(epPlot, example_ep, nrow = 1,
+          labels = c("C", "D"), label_size = 18)
+
+  figure1 = plot_grid(tracings_grid, ep_grids, nrow = 2)
+  ggsave("../figures/Figure1.pdf",
+         figure1,
+         width = 11.5, height = 12)
+  
+  ##### Figure 2 #########
+  # The 6 plots comes from Three Phase Classification -> Plot of Features subsection
+  
+  figure2 = plot_grid(firstposPeak, duration_pl, swab_pl, slope_pl, dbl_pl, rsq_pl,
+                    labels = c("A", "B", "C", "D", "E", "F"), label_size = 18, hjust = 0)
+  ggsave("../figures/Figure2.pdf",
+         figure2,
+         width = 12, height = 10)
+  
+  ###### Supplementary figure for rebound
+  # Data comes from cubic rebound subsection
+  
+  ggsave("../figures/supplementary-figures/suppfig_cubic_rebound.pdf",
+         rebound_pl, width = 11.5, height = 9)
+
+}
 
 
-```{r}
-cubic_table =  plyr::ldply(unique(CMVPrimaryEpisodes$PatientID), function(pid) cubic_decay_fit_table(pid))
+```
+
+```{r saving tables}
+if(save_output_tables){
+  library(readr)
+  library(WriteXLS)
+  
+  #Demographic and phase features
+  demo_table = triphasicFit[, c("PatientID2", "age", "momhiv", "peak", 
+                                "first_peak_day", "high_shed_length", "decay_length", "total_days" )]
+
+  #these names come from old iterations, easier to change them here to potentially break code and 
+  # change in the functions scripts
+  
+  names(demo_table) = c("PatientID2", "age", "momhiv", "peak", 
+                                "expanstion_length", "transition_length", "clearance_length", "total_days" )
+  write_csv(demo_table, "results-data/demo_features_data.csv")
+  
+  
+  # make them look a little nicer and save together in an excel spreadsheet
+  for(i in 1:length(colnames(demo_table))){
+    if(colnames(demo_table)[i] == "peak") demo_table[, i] = round(demo_table[, i], 2)
+    else demo_table[, i] = as.character(demo_table[, i])
+  }
+  names(demo_table) <- c("Infant ID", "Age (days)", "Mother HIV", "Peak viral load (log10 DNA copies/swab)",
+                         "Expansion duration (days)", "Transition duration (days)", "Clearance duration (days)",
+                         "Episode obs. time (days)")
+  
+  regression_table = triphasicTable
+  names(regression_table) = c("Infant ID", "Expansion N", "Expansion slope (/day) (95% CI)", "Expansion R2",
+                              "Doubling time (days)", "Transition N", "Transition slope (/day) (95% CI)",
+                              "Transition R2", "Clearance N", "Clearance slope (/day) (95% CI)", 
+                              "Clearance R2", "Half-life (days)")
+  
+  phase_results_table = full_join(demo_table, regression_table, by = "Infant ID")
+  
+  WriteXLS(phase_results_table, "../tables/supplementary-tables/primary_episode_analysis_results.xls")
+  
+  
+  #Supplementary Cubic table
+  cubic_table =  plyr::ldply(unique(CMVPrimaryEpisodes$PatientID), function(pid) cubic_decay_fit_table(pid))
+  write_csv(cubic_table, "../tables/supplementary-tables/supptable_cubic_regression.csv")
+
+}
 
 ```

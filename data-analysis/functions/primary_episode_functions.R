@@ -201,8 +201,8 @@ swab2swab_function = function(dataIn){
 }
 
 
-
-triphasicCI_function = function(dataIn, old = F){
+#this puts confidence intervals on the estimates
+phase_regression_table_function = function(dataIn, old = F){
   
   #sort by days so things are in chronological order
   dataIn = arrange(dataIn, days2)
@@ -214,7 +214,6 @@ triphasicCI_function = function(dataIn, old = F){
   peak = max(dataIn$count)
   first_peak = with(temp_episode, which(dataIn$days2 == peakphase_start))
   last_peak =  with(temp_episode, which(dataIn$days2 == peakphase_end))
-  
   
   #remove 0
   dataIn$count[dataIn$count == 0] = NA
@@ -242,23 +241,22 @@ triphasicCI_function = function(dataIn, old = F){
   
   output = with(dataIn, data.frame(
     PatientID2 = PatientID2[1],
-    ng = as.character(first_peak),
-    growth = growthF,
-    rsq_1 = round(summary(model1)$r.sq, 2),
-    nh = as.character(last_peak - first_peak + 1),
-    high = highF,
-    rsq_2 = round(summary(model2)$r.sq, 2),
-    nd = as.character(totaltimes - last_peak + 1),
-    decay = decayF,
-    rsq_3 = round(summary(model3)$r.sq, 2)
+    expansion_n = as.character(first_peak),
+    expansion_slope_95pctCI = growthF,
+    expansion_rsq = round(summary(model1)$r.sq, 2),
+    double_time_days = log10(2)/unname(model1$coef[2]),
+    trans_n = as.character(last_peak - first_peak + 1),
+    trans_slope_95pctCI = highF,
+    trans_rsq = round(summary(model2)$r.sq, 2),
+    clr_n = as.character(totaltimes - last_peak + 1),
+    clr_slope_days_95pctCI = decayF,
+    clr_rsq = round(summary(model3)$r.sq, 2),
+    half_life_days = log10(0.5)/unname(model3$coef[2])
     #rsq_avg = (min(peak_range)*summary(model1)$r.sq + (max(peak_range) - min(peak_range) + 1)*summary(model2)$r.sq + (totaltimes - max(peak_range) + 1)*summary(model3)$r.sq) / (totaltimes + 2)
   ))
   
   output
 }
-
-
-
 
 #cubic fit 
 cubic_decay_fit = function(pid){
