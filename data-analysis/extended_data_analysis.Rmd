@@ -19,7 +19,7 @@ library(readr)
 library(ggplot2)
 library(cowplot)
 
-save_output_figs = T
+save_output_figs = F
 
 all_infant_data = read_csv("../data/complete_episode_data.csv")
 
