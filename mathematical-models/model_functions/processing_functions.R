@@ -1,5 +1,4 @@
 ## ---- warning=FALSE, message = FALSE-------------------------------------
-library(plyr)
 library(dplyr)
 library(deSolve)
 library(ggplot2)
@@ -25,7 +24,7 @@ make_plot_data = function(fitOutput, fitData = NULL, parallel = F, first_time = 
       fitData$count2[which(fitData$count2 == 0)] <- NA
     }
 
-  simData = ldply(unique(fitOutput$model), function(modelIn){
+  simData = plyr::ldply(unique(fitOutput$model), function(modelIn){
     
     submodelparms = subset(fitOutput, model == modelIn)
     if(first_time) return_time = -round(submodelparms$start_day, 1) else return_time = 0
@@ -104,7 +103,7 @@ make_subject_plots = function(fitOutput, allCMVData, parallel = F,
                               simulation_data = NULL, save_out = T, dir_set = NULL, return_data = F, first_time = F){
   
   if(is.null(simulation_data)){
-    simulation_data = ldply(unique(fitOutput$PatientID2), function(id){
+    simulation_data = plyr::ldply(unique(fitOutput$PatientID2), function(id){
       
       subFitOutput = subset(fitOutput, PatientID2 == id)
       subRawData = subset(allCMVData, PatientID2 == id)
@@ -115,7 +114,7 @@ make_subject_plots = function(fitOutput, allCMVData, parallel = F,
   
   if(return_data) return(simulation_data)
   
-  plots = llply(unique(simulation_data$PatientID2), function(id){
+  plots = plyr::llply(unique(simulation_data$PatientID2), function(id){
     
     subPlotData = subset(simulation_data, PatientID2 == id)
 
@@ -186,7 +185,7 @@ parameter_plot = function(output_data, parameter_list = "mse"){
 #this must contain be passed the already made simulation data
 data_parameter_plot = function(fitOutput, simulation_data, parameter_list){
 
-  plots = llply(unique(simulation_data$PatientID2), function(id){
+  plots = plyr::llply(unique(simulation_data$PatientID2), function(id){
     
     subPlotData = subset(simulation_data, PatientID2 == id)
     subOutput = subset(fitOutput, PatientID2 == id)
@@ -208,7 +207,7 @@ data_parameter_plot = function(fitOutput, simulation_data, parameter_list){
                                   else return(boundary_set(fakeinput[i], "upper")))
     
     R0data = subOutput %>% group_by(model) %>% summarize(R0label = paste("R0 = ", round(R0, 2)))
-      
+    
     plot_parms = ggplot(data =  subset(parameter_fits),
          aes(x = parameter, y = log10(value), colour = model)) +
       geom_errorbar(aes(ymin = lower, ymax = lower), colour = "black", width = 0.5, linetype = "dashed") +
@@ -216,7 +215,7 @@ data_parameter_plot = function(fitOutput, simulation_data, parameter_list){
       geom_point(size = 3, alpha = 0.5) +
       scale_y_continuous(breaks = seq(-10, 10, 2)) +
       scale_x_discrete("Parameters") +
-      geom_text(data = R0data, aes(label = R0label, x = -Inf, y = c(10,9)), 
+      geom_text(data = R0data, aes(label = R0label, x = -Inf, y = c(10)), 
                 vjust = 1.2, hjust = -.2) +
       theme(legend.position = "top",
           text = element_text(family = "Times"),
@@ -224,7 +223,7 @@ data_parameter_plot = function(fitOutput, simulation_data, parameter_list){
           legend.text = element_text(size = 8),
           legend.key.size = unit(0.5, "cm"))
     
-    return(arrangeGrob(plot_data, plot_parms, nrow = 1, ncol = 2))
+    return(plot_grid(plot_data, plot_parms, nrow = 1, ncol = 2))
     })  
   return(plots)
 
@@ -233,10 +232,10 @@ data_parameter_plot = function(fitOutput, simulation_data, parameter_list){
 ## ------------------------------------------------------------------------
 make_highres_sim = function(fitOutput, parallel = F, first_time = F){
 
-  ldply(unique(fitOutput$PatientID2), function(id){
+  plyr::ldply(unique(fitOutput$PatientID2), function(id){
       subFitOutput = subset(fitOutput, PatientID2 == id)
       
-      ldply(unique(subFitOutput$model), function(modelIn){
+      plyr::ldply(unique(subFitOutput$model), function(modelIn){
             submodelparms = subset(subFitOutput, model == modelIn)
 
             if(first_time) return_time = -round(submodelparms$start_day, 1) else return_time = 0

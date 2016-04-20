@@ -1,7 +1,5 @@
 ## ------------------------------------------------------------------------
 #### EDIT THIS IN THE DOCUMENTATION FILE (.Rmd) ONLY ####
-
-
 boundary_set = function(parms, boundary = NULL, t_set = NA, par_set = NA, initV_upper = 2){
   if(length(parms) == 0 | is.null(boundary)) return(NULL)
   
@@ -10,6 +8,7 @@ boundary_set = function(parms, boundary = NULL, t_set = NA, par_set = NA, initV_
   if(boundary %in% c("l", "lower", "L", "Lower")){
     set_values = c(
       beta = -14,
+      betaK = -14 + log10(4e8),
       delta = -4,
       theta = -3,
       KI = 0,
@@ -25,6 +24,7 @@ boundary_set = function(parms, boundary = NULL, t_set = NA, par_set = NA, initV_
   if(boundary %in% c("u", "upper", "U", "Upper")){
     set_values = c(
       beta = -6.5,
+      betaK = -6.5 + log10(4e8),
       delta = 3,
       theta = 2,
       KI = 8,
