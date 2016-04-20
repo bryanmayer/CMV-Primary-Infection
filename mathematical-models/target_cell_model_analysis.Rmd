@@ -1,0 +1,432 @@
+---
+title: "Analysis of target cell models"
+output: pdf_document
+toc: yes
+fig_caption: yes
+---
+
+# Overview
+
+This document goes over the results the target cell analysis. There are three analyses, in each of these analyses $\beta$ and the starting time (start_time or $t_0$) were optimized to each infant's episode.
+
+1. Expansion model fit - by analyzing the expansion portion only we can estimate R0 during the exponential phase.
+2. Target cell fits for the entirety of the episode including transition and clearance phase. 
+3. Target cell fit profiling over a range of mu. In this analysis we also fitted $\delta$.
+
+The raw results come from fits using initial values drawn from latin hypercube. For this analysis, we restrict the  best fit set for each infant (for each given mu when it varies).
+
+
+```{r, warning = FALSE, message = FALSE, echo = F}
+library(dplyr)
+library(readr)
+library(deSolve)
+library(ggplot2)
+library(gridExtra)
+library(scales)
+library(RColorBrewer)
+library(cowplot)
+library(GGally)
+library(xtable)
+library(knitr)
+library(gtable)
+library(doParallel)
+registerDoParallel(cores = 4)
+
+save_output_figs = F
+save_output_tables = F
+
+fontsize_set = 13
+
+opts_chunk$set(warning = FALSE, message = FALSE, echo = FALSE,
+              error = FALSE)
+
+theme_set(theme_bw())
+
+source("model_functions/CMV_Models.R")
+source("model_functions/processing_functions.R")
+source("parameters/parameter_boundary.R")
+load("../data/CMVprimaryEpisode.RData")
+```
+
+# Expansion data analysis
+
+$\beta$ is rescaled by K ($S_0$) and called betaK
+
+## Look at best fit parameters 
+
+```{r load data, results = 'asis'}
+
+base_model_raw = read_csv("model_results/expansion_model_fits.csv")
+
+#to separate repeat fits, add noise
+base_model_raw$mse2 = base_model_raw$mse + 1e-9*runif(length(base_model_raw$mse))
+
+base_model_fits = base_model_raw %>% group_by(PatientID2) %>% 
+  dplyr::mutate(best = (mse2 == min(mse2))) %>%
+  filter(best == 1) %>% select(-mse2, -best) %>% ungroup()
+
+base_model_fits$betaK = with(base_model_fits, beta * K)
+base_model_fits$R02 = with(base_model_fits, beta * K * p/(c * delta *(1+mu/alpha))) # to check
+
+parameter_list = c("betaK", "start_day", "mse")
+
+save(base_model_fits, file = "model_results/expansion_fits.RData")
+
+base_fits_table = select(base_model_fits, PatientID2, betaK, start_day, mse, R0)
+base_fits_table = base_fits_table %>%
+  mutate(betaKx1000 = betaK * 1000) %>% select(-betaK)
+
+print(xtable(base_fits_table,
+                    caption = "Supplementary Table - Fits from expansion phase analysis"),
+      comment = F)
+
+```
+
+## Look at correlation between features
+
+```{r, echo = F, message = F, fig.align = 'center'}
+
+ggplot(data = subset(base_model_fits), aes(x = PatientID2, y = log10(betaK))) + 
+  geom_point()
+
+ggplot(data = subset(base_model_fits), aes(x = PatientID2, y = start_day)) + 
+  geom_point()
+
+print(ggpairs(log10(base_model_fits[, parameter_list])),
+      bottomHeightProportion = 0.3, leftWidthProportion = 0.3, spacingProportion = 0.1)
+
+```
+
+## Simulate the model with the best fits 
+
+```{r, echo = F}
+
+sim_data = make_subject_plots(base_model_fits, CMVPrimaryEpisodes, return_data = T, parallel = F)
+
+```
+
+### Look at parameters by person
+
+Note: this section saves a pdf with the fits and parameter values for each infant
+in `results_figures/base_model_fits.pdf`
+
+```{r, eval = T, message = FALSE, echo = F, fig.cap='parameter fits'}
+
+parmplots = data_parameter_plot(base_model_fits, sim_data, parameter_list)
+out_parmplots = marrangeGrob(grobs = parmplots, nrow = 1, ncol = 1)
+
+ggsave("results_figures/base_model_fits.pdf", out_parmplots)
+
+parameter_plot(base_model_fits, parameter_list)
+
+```
+
+### Looking at total epithelial population
+
+The model does not predict substantial decay in the susceptible population during the expansion phase, which validates our assumption about utilizing this portion of the data to inform R0. It also does not predict a loss in epithelial cells in general: this is likely from the assumption that $\mu$ replenishes the S pretty quickly.
+
+```{r, echo=FALSE, fig.align = 'center', fig.cap='Depletion of S and total cells ($S+L+I$) is limited during expansion phase under best fit parameters'}
+
+expansion_end_data = plyr::ldply(unique(CMVPrimaryEpisodes$PatientID2), function(pid){
+  data.frame(
+    PatientID2 = pid,
+    final_model_day = find_peak(subset(CMVPrimaryEpisodes, PatientID2 == pid))
+  )
+})
+
+sim_data = left_join(sim_data, expansion_end_data, by = "PatientID2")
+
+ggplot(data = subset(sim_data, model != "data" & days_model <= final_model_day),
+       aes(x = days_model, y = ((S)/40e7))) + 
+  geom_line(aes(colour = PatientID2)) + facet_wrap(~model) +
+  scale_y_continuous("Remaining susceptible epithelial cells / initial epithelial cells") +
+  scale_colour_discrete(guide = F)
+
+
+ggplot(data = subset(sim_data, model != "data" & days_model <= final_model_day),
+       aes(x = days_model, y = ((S + I + I0)/40e7))) + 
+  geom_line(aes(colour = PatientID2)) + facet_wrap(~model) +
+  scale_y_continuous("Remaining epithelial cells / initial epithelial cells") +
+  scale_colour_discrete(guide = F)
+
+```
+
+## R0 
+```{r, echo = F, fig.cap='R0 estimation from fits of expansion phase'}
+ggplot(data = base_model_fits, aes(x = "", y = R0)) + geom_boxplot() + 
+  geom_point() +
+  scale_x_discrete("") +
+  scale_y_continuous("R0")
+```
+
+# Target cell model with biologically fixed parameters
+
+Here $\mu$ = 1/4.5 and $\delta$ = 0.77. This model does a terrible job of recapitulating of fitting the data.
+
+```{r, fig.align = 'center', fig.height = 9, fig.width = 5, fig.cap = "Target cell model with fixed delta and mu does poorly", eval = T}
+tc_model_raw = read_csv("model_results/target_cell_model_fits_fixed_delta.csv")
+tc_model_raw$mse2 = tc_model_raw$mse = tc_model_raw$mse + 1e-9*runif(length(tc_model_raw$mse))
+
+tc_model_best = subset(tc_model_raw) %>% group_by(PatientID2) %>% 
+  dplyr::mutate(best = (mse2 == min(mse2))) %>%
+  filter(best == 1) %>% select(-mse2, -best) %>% ungroup()
+tc_model_best$betaK = with(tc_model_best, beta * K)
+
+all_plots = plyr::llply(unique(tc_model_best$PatientID2), function(pid){
+  
+  plot_data = make_subject_plots(subset(tc_model_best, PatientID2 == pid), CMVPrimaryEpisodes, return_data = T)
+  plot_data$days_model
+  ggplot() + 
+    geom_line(data = subset(plot_data, model != "data"), 
+              aes(x = days_model, y = count), size = 1.5, alpha = 0.7, colour = "blue") +
+    geom_point(data = subset(plot_data, model == "data"), aes(x = days_model, y = count), colour = "black") +
+    scale_x_continuous("", breaks = 100*0:8) +
+    scale_y_continuous("", breaks = 0:11) +
+    scale_colour_discrete("") +
+    scale_linetype_discrete("") +
+    theme(legend.position = "none",
+          plot.margin = unit(c(0, 0.2, 0, -0.1),"cm"),
+          text = element_text(family = "Times"),
+          title = element_text(size = 9),
+          legend.text = element_text(size = 8),
+          legend.key.size = unit(0.5, "cm")) +
+    ggtitle(plot_data$PatientID2[1])
+})
+plot_grid(plotlist = all_plots, nrow = 7, ncol = 2)
+
+```
+
+# Target cell model with varying $\mu$
+
+```{r}
+mu_model_raw = read_csv("model_results/target_cell_model_fits.csv")
+mu_model_raw$mse2 = mu_model_raw$mse + 1e-9*runif(length(mu_model_raw$mse))
+mu_best_fits = mu_model_raw %>% group_by(PatientID2, mu) %>% 
+  dplyr::mutate(best = (mse2 == min(mse2))) %>%
+  filter(best == 1) %>% select(-mse2, -best) %>% ungroup()
+mu_best_fits$betaK = with(mu_best_fits, beta * K)
+
+total_n_subject = subset(CMVPrimaryEpisodes, count > 0) %>% group_by(PatientID2) %>% summarize(total_n = n())
+mu_best_fits = merge(mu_best_fits, total_n_subject, by = "PatientID2", all.x = T)
+mu_best_fits$true_mse = mu_best_fits$mse/mu_best_fits$total_n
+mu_best_fits = mu_best_fits %>% group_by(PatientID2) %>% mutate(best = (mse == min(mse)))
+
+```
+
+## Look at parameter fits
+
+### Compare parameter fits across $\mu$ values
+
+```{r, fig.cap='mu vs parameters'}
+mu_best_fits_long = reshape2::melt(mu_best_fits %>% mutate(log10betaK = log10(betaK)), measure.vars = 
+                                     c("true_mse", "log10betaK", "start_day", "R0"))
+ggplot(data = mu_best_fits_long, aes(x = log2(mu), y = value)) + geom_point() +
+  facet_wrap(~variable, nrow = 2, scales = "free")
+
+```
+
+```{r setup legend stuff}
+leg_labels = c("1/10000", "1/1000", "1/365", "1/30", "1/4.5", "1", "2")
+
+leg_plot_top = ggplot(data = mu_best_fits, aes(x = beta, y = delta, colour = factor(mu), linetype = factor(mu))) +
+  geom_point() + geom_line() +
+  scale_colour_discrete("Susc. cell death rate\n(/day)", labels = leg_labels) +
+  scale_linetype_discrete("Susc. cell death rate\n(/day)", labels = leg_labels) +
+  theme(
+    text = element_text(family = "Times", size = 16), legend.position = "top"
+  )
+leg1 <- gtable_filter(ggplot_gtable(ggplot_build(leg_plot_top)), "guide-box") 
+leg_plot_small = ggplot(data = mu_best_fits, aes(x = beta, y = delta, colour = factor(mu), linetype = factor(mu))) +
+  geom_line(size = 2) +
+  scale_colour_discrete(expression(paste(mu)), labels = leg_labels) +
+  scale_linetype_discrete(expression(paste(mu)), labels = leg_labels) +
+  theme(
+    text = element_text(family = "Times", size = fontsize_set), legend.position = "top",  legend.key.size = unit(0.5, "cm")
+  )
+leg_small <- gtable_filter(ggplot_gtable(ggplot_build(leg_plot_small)), "guide-box") 
+```
+
+```{r, fig.cap='Main parameter effects by mu', fig.align='center'}
+
+mu_vs_mse = ggplot(data = mu_best_fits, aes(x = log2(mu), y = true_mse)) + 
+  geom_boxplot(aes(group = log2(mu))) +
+  geom_point(aes(colour = PatientID2, shape = best, size = best),
+             position = position_dodge(width = 0.75)) +
+  geom_line(aes(colour = PatientID2), alpha = 0.25) +
+  scale_shape_manual(guide = F, values = c(15, 16)) +
+  scale_colour_discrete(guide = F) +
+  scale_size_manual(guide = F, values = c(1, 3)) +
+  scale_x_continuous(expression(paste("Susceptible population death rate, log"[2], "(", mu, ")(/day)")),
+                     breaks = sort(unique(log2(mu_best_fits$mu))),
+                     labels = leg_labels) +
+  scale_y_continuous("Mean squared error") +
+  theme(legend.position = "none",
+        plot.margin = unit(c(0.5, 0.4, 0.5, 0),"cm"),
+        text = element_text(family = "Times", size = fontsize_set),
+        axis.text.x = element_text(size = fontsize_set - 6)
+  )
+
+mu_vs_delta = ggplot(data = mu_best_fits, aes(x = log2(mu), y = log10(delta))) + 
+  geom_point(aes(colour = PatientID2, shape = best, size = best),
+             position = position_dodge(width = 0.75)) +
+  scale_shape_manual(guide = F, values = c(15, 16)) +
+  scale_colour_discrete(guide = F) +
+  scale_size_manual(guide = F, values = c(1, 3)) +
+  geom_hline(aes(yintercept = log10(0.77)), linetype = 2) +
+  scale_x_continuous(expression(paste("Susceptible population death rate, log"[2], "(", mu, ")(/day)")),
+                     breaks = sort(unique(log2(mu_best_fits$mu))),
+                     labels = leg_labels) +
+  scale_y_continuous(expression(paste("Infected population death rate, log"[10], "(", delta, ") (/day)"))) +
+  theme(legend.position = "none",
+        plot.margin = unit(c(0.5, 0.5, 0.5, -0.1),"cm"),
+        text = element_text(family = "Times", size = fontsize_set),
+        axis.text.x = element_text(size = fontsize_set - 6)
+  )
+
+muvsparm_plot = plot_grid(mu_vs_mse, mu_vs_delta, nrow = 1, ncol = 2, labels = LETTERS[1:2])
+
+muvsparm_plot
+
+```
+
+### $\beta$ vs $\delta$
+```{r, fig.cap = 'beta vs delta'}
+ggplot(data = mu_best_fits, aes(x = log10(beta), y = log10(delta))) + geom_point()
+```
+
+## Episode fits across $\mu$
+
+This model does a better job of capturing the data.
+
+```{r simulate data by mu and plot best fits, fig.align ='center', fig.cap='Best Target cell fits by mu', fig.height = 9, fig.width = 5,}
+#Do it like this so we don't have to store all of the simulations
+mu_plots = plyr::llply(unique(mu_best_fits$PatientID2), function(pid){
+  temp_data = subset(mu_best_fits, PatientID2 == pid)
+  raw_data = subset(CMVPrimaryEpisodes, PatientID2 == pid) %>% dplyr::mutate(days_model = days2)   
+  
+  plot_data = plyr::ldply(unique(temp_data$mu), function(mu_in){
+  
+    p_data_temp = make_subject_plots(subset(temp_data, mu == mu_in), CMVPrimaryEpisodes, return_data = T, parallel = F)
+    p_data_temp$mu = mu_in
+    p_data_temp$days_model = p_data_temp$days_model
+    subset(p_data_temp, days_model >= 0)
+  })
+  ggplot() + 
+    geom_line(data = subset(plot_data, model != "data"), 
+              aes(x = days_model, y = count, colour = factor(mu), linetype = factor(mu)), size = 1.5, alpha = 0.7) +
+    geom_point(data = raw_data, aes(x = days_model, y = count), colour = "black") +
+    scale_x_continuous("", breaks = 100*0:8) +
+    scale_y_continuous("", breaks = 0:11, limits = c(0, 10)) +
+    scale_colour_discrete("") +
+    scale_linetype_discrete("") +
+    theme(legend.position = "none",
+          plot.margin = unit(c(0, 0.2, 0, -0.1),"cm"),
+          text = element_text(family = "Times"),
+          title = element_text(size = 9),
+          legend.text = element_text(size = 8),
+          legend.key.size = unit(0.5, "cm")) +
+    ggtitle(plot_data$PatientID2[1])
+    
+}, .parallel = T)
+
+bot_lab = "Time (days)"
+left_lab = expression(paste("Log"[10]," CMV DNA conc."))
+
+all_plots = arrangeGrob(grobs = mu_plots, nrow = 7, ncol = 2,
+                        textGrob(bot_lab, vjust = -0.2, gp=gpar(fontfamily = "Times", fontsize = 18)),
+                        left = textGrob(left_lab, vjust = 1.2, rot = 90, gp=gpar(fontfamily = "Times", fontsize = 18)))
+
+
+out_TL_plot = plot_grid(leg_small, all_plots, rel_heights = c(0.5, 10), nrow = 2)
+out_TL_plot
+
+```
+
+
+## Loss of epithelial cells during model simulation
+
+Substantial loss of epithelial population not consistent with the etiology of CMV infection.
+
+```{r loss plot, fig.cap='total epithelial cell loss during infection. A) minimum remaining at some point of infection across all mus; B) time series of cell loss among best fits only', fig.align = 'center'}
+cell_loss_data = plyr::ldply(unique(mu_best_fits$PatientID2), function(pid){
+  temp_data = subset(mu_best_fits, PatientID2 == pid & best == T)
+  p_data_temp = make_subject_plots(select(temp_data, -best), CMVPrimaryEpisodes, return_data = T, parallel = F)
+  p_data_temp$days_model = p_data_temp$days_model 
+  subset(p_data_temp, model != "data")
+}, .parallel = T)
+
+cell_loss = plyr::ldply(unique(mu_best_fits$PatientID), function(pid){
+  temp_data = subset(mu_best_fits, PatientID2 == pid)
+  raw_data = subset(CMVPrimaryEpisodes, PatientID2 == pid) %>% dplyr::mutate(days_model = days2)   
+  
+  plyr::ldply(unique(temp_data$mu), function(mu_in){
+    
+    temp_data2 = subset(temp_data, mu == mu_in)
+    p_data_temp = make_subject_plots(select(temp_data2, -best), CMVPrimaryEpisodes, return_data = T, parallel = F)
+    
+    max_loss = max(1 - (p_data_temp$S + p_data_temp$I + p_data_temp$I0)/4e8, na.rm = T)
+    temp_data2$max_loss = max_loss
+    
+    temp_data2
+    
+  })
+}, .parallel = T)
+
+
+min_cells = ggplot(data = subset(cell_loss),
+                   aes(x = log2(mu), y = 100*(1-max_loss))) + 
+  geom_point(aes(colour = PatientID2, shape = best, size = best),
+             position = position_dodge(width = 0.75), alpha = 0.75) +
+  scale_shape_manual(guide = F, values = c(15, 16)) +
+  scale_colour_discrete(guide = F) +
+  scale_size_manual(guide = F, values = c(2, 4)) +
+  scale_x_continuous(expression(paste("Susceptible population death rate, log"[2], "(", mu, ")(/day)")),
+                     breaks = sort(unique(log2(mu_best_fits$mu))),
+                     labels = leg_labels) +
+  scale_y_continuous("Minimum percentage of remaining cells during episode",
+                     breaks = 10*0:10, expand = c(0.025, 0.025)) +
+  theme(legend.position = "none",
+        plot.margin = unit(c(0.5, 0.5, 0.5, -0.1),"cm"),
+        text = element_text(family = "Times", size = fontsize_set),
+        axis.text.x = element_text(size = fontsize_set - 6)
+  )
+
+loss_sim = ggplot(data = cell_loss_data, aes(x = days_model, y = 100*(S+I+I0)/4e8, colour = PatientID2)) + 
+  geom_line() +
+  scale_y_continuous("Percentage of remaining cells",
+                     breaks = 10*0:10, expand = c(0.025, 0.025), limits = c(0, 100)) +
+  scale_x_continuous("Time (days)", breaks = 100 * 0:7) +
+  scale_colour_discrete(guide = F)+
+  theme(legend.position = "none",
+        plot.margin = unit(c(0.5, 0.5, 0.5, 0.5),"cm"),
+        text = element_text(family = "Times", size = fontsize_set)
+  )
+
+loss_plots = plot_grid(min_cells, loss_sim, nrow = 1, ncol = 2, labels = LETTERS[3:4])
+loss_plots
+
+```
+
+
+# Save output data and figures for supplement.
+
+See code for this.
+```{r}
+if(save_output_figs){
+  ggsave("../figures/supplementary-figures/suppfig_all_TC_mufits.pdf", 
+       out_TL_plot, width = 210, height = 297, units = "mm")
+  
+  
+  ggsave("../figures/supplementary-figures/suppfig_TC_cell_loss.pdf", 
+         plot_grid(muvsparm_plot, loss_plots, nrow = 2, ncol = 1),  
+         width = 210, height = 200, units = "mm")
+
+}
+
+if(save_output_tables){
+  base_fits_table = select(base_fits_table, PatientID2, start_day, betaKx1000, R0)
+  names(base_fits_table) = c("Infant ID", "t0 (days)", "beta*S0 (x1000) (/virus/day)", "R0")
+  readr::write_csv(base_fits_table, "../tables/supplementary-tables/expansion_model_fits.csv")
+}
+
+```
