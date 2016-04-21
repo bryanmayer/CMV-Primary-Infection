@@ -22,7 +22,7 @@ library(ggplot2)
 library(cowplot)
 
 save_output_figs = F
-save_output_tables = F
+save_output_tables = T
 fontsize = 12
 x_adj = 7
 y_adj = 4
