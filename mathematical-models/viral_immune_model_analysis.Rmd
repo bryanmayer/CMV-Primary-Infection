@@ -1,0 +1,167 @@
+---
+title: "Analysis of viral immunity models"
+output: pdf_document
+toc: yes
+fig_caption: yes
+---
+# Overview
+
+This document goes over the analysis of the model results from the viral mediated immue model. This was not included in the manuscript. In this document, the parameters are plotted and the mse are compared between this and cytolytic immune model.
+
+
+```{r, warning = FALSE, message = FALSE, echo = F}
+library(dplyr)
+library(readr)
+library(deSolve)
+library(ggplot2)
+library(gridExtra)
+library(scales)
+library(RColorBrewer)
+library(cowplot)
+library(GGally)
+library(xtable)
+library(knitr)
+library(gtable)
+library(doParallel)
+registerDoParallel(cores = 4)
+
+fontsize_set = 13
+x_lims = c(0, 425)
+
+
+opts_chunk$set(warning = FALSE, message = FALSE, echo = FALSE,
+              error = FALSE)
+
+theme_set(theme_bw())
+
+source("model_functions/CMV_Models.R")
+source("model_functions/processing_functions.R")
+source("parameters/parameter_boundary.R")
+load("../data/CMVprimaryEpisode.RData")
+```
+
+# Viral immune model results
+
+```{r}
+viral_immune_model_raw = read_csv("model_results/viral_immune_model_fits.csv")
+viral_immune_model_raw$mse2 = viral_immune_model_raw$mse + 1e-9*runif(length(viral_immune_model_raw$mse))
+viral_immune_model_fits = viral_immune_model_raw %>% group_by(PatientID2, model) %>% dplyr::mutate(best = (mse2 == min(mse2))) %>%
+  filter(best == 1) %>% select(-mse2, -best) %>% ungroup()
+viral_immune_model_fits$betaK = with(viral_immune_model_fits, beta * K)
+
+
+parameter_list = c("theta", "KT", "death", "mse")
+
+
+
+```
+
+
+## Fitted model parameters
+```{r,  message = F, results='asis'}
+
+
+immune_fits_table = viral_immune_model_fits %>%
+  mutate(log10KV = log10(KT), gammaX100 = death * 100) %>%
+  select(PatientID2, theta, log10KV, gammaX100, mse)
+
+print(xtable(immune_fits_table,
+                    caption = " Fits from viral mediated immune model"),
+      comment = F)
+
+
+```
+
+```{r, message = F, fig.cap='Parameter boxplots', fig.align ='center', eval = F}
+parameter_plot(viral_immune_model_fits, parameter_list) +
+  theme(legend.position = "none") +
+  ggtitle(viral_immune_model_raw$model[1])
+```
+
+
+```{r, message = F, fig.cap='Distribution and correlation of fitted immune parameters (all transformed log10)', fig.align ='center'}
+print(ggpairs(log10(subset(viral_immune_model_fits, model == "CMVModel_latent_immunity_V")[, parameter_list])),
+      bottomHeightProportion = 0.3, leftWidthProportion = 0.3, spacingProportion = 0.1)
+```
+
+## Simulated data fit compared to episode data (Figure 3)
+
+(also saves figure results_figures/viral_model_fits.pdf that displays parameter values, R0 along with time series plots. This chunk has eval = F in the code.)
+
+```{r simulate results, message = FALSE, echo = F, eval = T}
+
+sim_data = make_subject_plots(viral_immune_model_fits, CMVPrimaryEpisodes, return_data = T, parallel = T, first_time = T)
+```
+
+
+```{r save parm results, message = FALSE, echo = F, eval = F}
+### only need to run this chunk if you want to save new model fit plots
+
+parmplots = data_parameter_plot(viral_immune_model_fits, sim_data, parameter_list)
+out_parmplots = marrangeGrob(grobs = parmplots, nrow = 1, ncol = 1)
+
+ggsave("results_figures/viral_model_fits.pdf", out_parmplots)
+
+
+```
+
+```{r plot model fits, fig.align ='center', fig.cap='Best immune model fits', fig.height = 9, fig.width = 5}
+
+
+imm_plots = plyr::llply(unique(sim_data$PatientID2), function(pid){
+  temp_data = subset(sim_data, PatientID2 == pid)
+  ggplot() +
+    geom_point(data = subset(temp_data, model == "data"), aes(x = days_model, y = count), colour = "black") +
+    geom_line(data = subset(temp_data, model != "data"),
+              aes(x = days_model, y = count, colour = model, linetype = model), size = 1.5, alpha = 0.7) +
+    scale_x_continuous("", breaks = 100*0:8) +
+    scale_y_continuous("", breaks = 2*0:5, limits = c(0, 10.5)) +
+    scale_colour_discrete("") +
+    scale_linetype_discrete("") +
+    theme(legend.position = "none",
+          plot.margin = unit(c(0, 0.2, 0, -0.1),"cm"),
+          text = element_text(family = "Times"),
+          title = element_text(size = 9.5),
+          legend.position = "none") +
+    ggtitle(temp_data$PatientID2[1])
+
+}, .parallel = F)
+
+bot_lab = "Time (days)"
+left_lab = expression(paste("Log"[10]," CMV DNA conc."))
+
+all_plots = arrangeGrob(grobs = imm_plots, nrow = 7, ncol = 2,
+                        textGrob(bot_lab, vjust = -0.2, gp=gpar(fontfamily = "Times", fontsize = 18)),
+                        left = textGrob(left_lab, vjust = 1.2, rot = 90, gp=gpar(fontfamily = "Times", fontsize = 18)))
+
+plot_grid(all_plots)
+```
+
+## Compare to cytolytic model
+The KI and KV vary because units are different (there is more virus). The lifespan of the immune effectors is pretty stable between models. The MSE is very correlated showing that distinguishing the models without additional constraints is difficult. Infants D and H deviate the most and both had parameter fits on the constraint boundaries (in both models).
+
+```{r, fig.align ='center'}
+load(file = "model_results/ctl_immune_model_fits.RData")
+compare_data = bind_rows(immune_model_fits, viral_immune_model_fits)
+
+parameter_list2 = c("theta", "KI", "KT", "death", "mse")
+
+compare_data_long = reshape2::melt(compare_data, measure.vars = c(parameter_list2))
+
+ggplot(data = compare_data_long, aes(x = variable, y = log10(value), colour = model)) +
+  geom_boxplot() +
+  theme(legend.position = "top")
+
+```
+
+```{r, fig.align ='center'}
+immune_model_fits$cyt_model_mse = immune_model_fits$mse
+viral_immune_model_fits$viral_model_mse = viral_immune_model_fits$mse
+compare_data2 = full_join(immune_model_fits, viral_immune_model_fits, by = "PatientID2")
+
+ggplot(data = compare_data2, aes(x = cyt_model_mse, y = viral_model_mse)) +
+ geom_label(aes(label = PatientID2)) +
+ geom_abline(slope = 1)
+
+
+```
