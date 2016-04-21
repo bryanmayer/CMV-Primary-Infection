@@ -1,0 +1,505 @@
+---
+title: "Analysis of cytolyic immunity models"
+output: pdf_document
+toc: yes
+fig_caption: yes
+---
+# Overview
+
+This document goes over the analysis of the model results from the main model described in the manuscript: CMV infection with cytolytic immune response (see model_code_documentation/CMV_Models.pdf for equations and code). The immune parameters for this model are fit across the entire episode for each infant. The beta and start_time parameters were fit to the expansion phase only in a prior analysis to estimate R0 (see first results section of target_cell_model_analysis.pdf for that).
+
+This document and code generated the results presented for publication: Figures 3 and 4 come from here. This is how the analysis was broken down:
+
+1. Assessement of optimized parameter values and model fit
+2. Model results interpretation through simulation using best fits and estimation of infected cell lifespan with immune response
+3. Estimation of effective reproduction number, R, to evaluate critical time points during infection
+4. Check on epithelial cell loss
+
+
+```{r, warning = FALSE, message = FALSE, echo = F}
+library(dplyr)
+library(readr)
+library(deSolve)
+library(ggplot2)
+library(gridExtra)
+library(scales)
+library(RColorBrewer)
+library(cowplot)
+library(GGally)
+library(xtable)
+library(knitr)
+library(gtable)
+library(doParallel)
+registerDoParallel(cores = 4)
+
+save_output_figs = F
+save_output_tables = F
+
+fontsize_set = 13
+x_lims = c(0, 425)
+
+
+opts_chunk$set(warning = FALSE, message = FALSE, echo = FALSE,
+              error = FALSE)
+
+theme_set(theme_bw())
+
+source("model_functions/CMV_Models.R")
+source("model_functions/processing_functions.R")
+source("parameters/parameter_boundary.R")
+load("../data/CMVprimaryEpisode.RData")
+```
+
+
+# Model optimization and results
+
+Model parameters were estimated for each infant episode after initializing. Subject by subject parameters and model fits appear in the results_figures/
+
+```{r load and process data, warning = FALSE, message = FALSE, echo = F}
+immune_model_raw = read_csv("model_results/cytolytic_immune_model_fits.csv")
+immune_model_raw$mse2 = immune_model_raw$mse + 1e-9*runif(length(immune_model_raw$mse))
+immune_model_fits = immune_model_raw %>% group_by(PatientID2, model) %>% dplyr::mutate(best = (mse2 == min(mse2))) %>%
+  filter(best == 1) %>% select(-mse2, -best) %>% ungroup()
+immune_model_fits$betaK = with(immune_model_fits, beta * K)
+
+parameter_list = c("theta", "KI", "death", "mse")
+
+```
+
+## Fitted model parameters
+```{r,  message = F, results='asis'}
+
+save(immune_model_fits, file = "model_results/ctl_immune_model_fits.RData")
+
+immune_fits_table = immune_model_fits %>%
+  mutate(log10KI = log10(KI), gammaX100 = death * 100) %>%
+  select(PatientID2, theta, log10KI, gammaX100, mse)
+
+print(xtable(immune_fits_table,
+                    caption = "Supplementary Table - Fits from cytolytic immune model"),
+      comment = F)
+
+
+```
+
+```{r, message = F, fig.cap='Parameter boxplots'}
+parameter_plot(immune_model_fits, parameter_list) +
+  theme(legend.position = "none") +
+  ggtitle(immune_model_fits$model[1])
+```
+
+
+```{r, message = F, fig.cap='Distribution and correlation of fitted immune parameters (all transformed log10)'}
+print(ggpairs(log10(subset(immune_model_fits, model == "CMVModel_latent_immunity_CTL")[, parameter_list])),
+      bottomHeightProportion = 0.3, leftWidthProportion = 0.3, spacingProportion = 0.1)
+```
+
+## Simulated data fit compared to episode data (Figure 3)
+
+(also saves figure results_figures/CTL_model_fits.pdf that displays parameter values, R0 along with time series plots. This chunk has eval = F in the code.)
+
+```{r simulate results, message = FALSE, echo = F, eval = T}
+
+sim_data = make_subject_plots(immune_model_fits, CMVPrimaryEpisodes, return_data = T, parallel = T, first_time = T)
+sim_data$model = as.character(sim_data$model)
+```
+
+
+```{r save parm results, message = FALSE, echo = F, eval = F}
+### only need to run this chunk if you want to save new model fit plots
+
+parmplots = data_parameter_plot(immune_model_fits, sim_data, parameter_list)
+out_parmplots = marrangeGrob(grobs = parmplots, nrow = 1, ncol = 1)
+
+ggsave("results_figures/CTL_model_fits.pdf", out_parmplots)
+
+
+```
+
+```{r plot model fits, fig.align ='center', fig.cap='Best immune model fits', fig.height = 9, fig.width = 5}
+
+
+imm_plots = plyr::llply(unique(sim_data$PatientID2), function(pid){
+  temp_data = subset(sim_data, PatientID2 == pid)
+  ggplot() +
+    geom_point(data = subset(temp_data, model == "data"), aes(x = days_model, y = count), colour = "black") +
+    geom_line(data = subset(temp_data, model != "data"),
+              aes(x = days_model, y = count, colour = model, linetype = model), size = 1.5, alpha = 0.7) +
+    scale_x_continuous("", breaks = 100*0:8) +
+    scale_y_continuous("", breaks = 2*0:5, limits = c(0, 10.5)) +
+    scale_colour_discrete("") +
+    scale_linetype_discrete("") +
+    theme(legend.position = "none",
+          plot.margin = unit(c(0, 0.2, 0, -0.1),"cm"),
+          text = element_text(family = "Times"),
+          title = element_text(size = 9.5),
+          legend.position = "none") +
+    ggtitle(temp_data$PatientID2[1])
+
+}, .parallel = F)
+
+bot_lab = "Time (days)"
+left_lab = expression(paste("Log"[10]," CMV DNA conc."))
+
+all_plots = arrangeGrob(grobs = imm_plots, nrow = 7, ncol = 2,
+                        textGrob(bot_lab, vjust = -0.2, gp=gpar(fontfamily = "Times", fontsize = 18)),
+                        left = textGrob(left_lab, vjust = 1.2, rot = 90, gp=gpar(fontfamily = "Times", fontsize = 18)))
+
+plot_grid(all_plots)
+```
+
+
+# Infected cell lifespan with immune pressure
+
+## Time series plots of immune pressure
+```{r calculate immune pressure and effR}
+immune_sim_only = merge(subset(sim_data, model != "data"), immune_model_fits, by = c("model", "PatientID2"), all.x = T) %>%
+  group_by(PatientID2) %>% mutate(start_day = abs(min(days_model))) %>%
+  ungroup() %>%
+  mutate(
+    days_model_adj = days_model + start_day, #this is to rescale the simulation to be day from start of infection (instead of first positive)
+    clr = 0.01 * Tcell + 0.77,
+    action = (0.77 + 0.01 * Tcell)/24,
+    action_plot = 1/action,
+    action_pct = action_plot/max(action_plot) * 100,
+    effR0 = S/K * R0 * delta / (delta + k * Tcell),
+    effR0_noS = R0 * delta / (delta + k * Tcell)
+  )
+
+
+immune_summary_data = immune_sim_only %>% group_by(PatientID2, R0) %>%
+  summarize(
+    minimum_lifespan_hrs = action_plot[which(Tcell == max(Tcell))],
+    maximum_reduction_pct = 100 - action_pct[which(Tcell == max(Tcell))],
+    peak_dayV = days_model_adj[which(V == max(V, na.rm = T))],
+    peak_dayI = days_model_adj[which(I == max(I))],
+    peak_dayI0 = days_model_adj[which(I0 == max(I0))],
+    peak_immune_day = days_model_adj[which(Tcell == max(Tcell))],
+    cross_day = days_model_adj[min(which(round(effR0, 3) == 1))], # should be same as peak_dayV
+    minR = min(effR0) # remember that minimum R comes from both susceptible cell depletion and immune response
+    )
+ 
+peak_time_table = immune_summary_data
+
+```
+
+```{r time series immune pressure, fig.align = 'center', fig.cap='Immune pressure over time on infected cell lifespan', fig.height = 4, fig.width = 4}
+dyn_plot = ggplot(data = immune_sim_only, aes(x = days_model, y = 100 - action_pct)) +
+  geom_line(aes(colour = PatientID2)) +
+  scale_y_continuous("Infected cell lifespan reduction (%)", limits = c(0, 75), breaks = 0:4 * 25) +
+  scale_x_continuous("Time (days)", limits = x_lims, breaks = 100 * 0:6) +
+  theme(legend.position = "none",
+        panel.background = element_rect(colour = "black"),
+        axis.title.y = element_text(size = 11),
+        panel.grid.minor = element_blank(),
+        text = element_text(size = 16, family = "Times")
+  )
+
+dyn_plot
+```
+
+
+## Magnitude of peak response (shortest infected cell lifespan)
+
+```{r, results = 'asis'}
+
+print(xtable(
+  select(peak_time_table, PatientID2, minimum_lifespan_hrs, maximum_reduction_pct), 
+  digits = 2, caption = "Maximum immune pressure effect on infected cell lifespan (compared to 31 hours without immunity)"),
+      comment = F, include.rownames = F)
+
+peak_time_table %>% ungroup() %>% reshape2::melt(measure.vars = c("minimum_lifespan_hrs", "maximum_reduction_pct")) %>%
+  group_by(variable) %>%
+  summarize(
+    median = median(value),
+    IQR = paste(round(quantile(value, c(0.25, 0.75)), 3), collapse = ", "),
+    range = paste(round(range(value), 3), collapse = ", ")
+  ) %>%
+  xtable(caption = "Summary of maximum immune pressure effect on infected cell lifespan  (compared to 31 hours without immunity)") %>%
+  print(comment = F, include.rownames = F)
+
+```
+
+```{r magnitude of peak response, fig.align='center', fig.height = 3, fig.width = 3}
+peak_box = ggplot(data = immune_summary_data, aes(x = "", y = minimum_lifespan_hrs)) +
+  geom_boxplot(width = 1, outlier.colour = alpha("white", 0)) +
+  geom_point(aes(colour = PatientID2), size = 3, position = position_dodge(width = 0.75), alpha = 0.5) +
+  scale_y_continuous("Minimum infected cell half-life\n(hrs)", limits = c(5, 35)) +
+  geom_hline(yintercept = 31.18, alpha = 0.5, linetype = "dotted", size = 1.2) +
+  theme(legend.position = "none",
+        panel.background = element_rect(colour = "black"),
+        panel.grid.minor = element_blank(),
+        text = element_text(size = 16, family = "Times"),
+        axis.title.y = element_text(size = 11),
+        axis.title.x = element_blank(),
+        axis.ticks.x = element_blank()
+  )
+
+peak_box
+```
+
+## Time of peak response (when shortest infected cell lifespan)
+
+```{r, results = 'asis'}
+
+print(xtable(
+  select(peak_time_table, PatientID2, peak_immune_day),
+  digits = 2, caption = "Day of peak immune pressure"),
+      comment = F, include.rownames = F)
+
+peak_time_table %>% ungroup() %>%
+  summarize(
+    median = median(peak_immune_day),
+    IQR = paste(round(quantile(peak_immune_day, c(0.25, 0.75)), 3), collapse = ", "),
+    range = paste(round(range(peak_immune_day), 3), collapse = ", ")
+  ) %>%
+  xtable(caption = "Summary stats for day of immune pressure") %>%
+  print(comment = F, include.rownames = F)
+
+```
+
+```{r time of peak immune, fig.cap='distribution of peak immune pressure', fig.align='center',fig.height=3,fig.width=3}
+
+peak_immune_time_plot = ggplot(data = immune_summary_data, aes(x = "", y = peak_immune_day)) +
+  scale_y_continuous("Days", limits = x_lims) +
+  geom_boxplot(width = 1, outlier.colour = alpha("white", 0)) +
+  geom_point(aes(colour = PatientID2), size = 3, position = position_dodge(width = 0.75), alpha = 0.5) +
+  theme(legend.position = "none",
+        panel.background = element_rect(colour = "black"),
+        panel.grid.minor = element_blank(),
+        text = element_text(size = 16, family = "Times"),
+        axis.title.y = element_text(size = 11),
+        axis.title.x = element_blank(),
+        axis.ticks.x = element_blank()
+  )
+
+peak_immune_time_plot
+
+```
+
+# Effective reproduction number
+
+## Clearance phase initiation and effective R == 1
+
+When effective R crosses 1 for the first time, that initiates clearance. This matches with the peak viral load day predicted in the model as expected (with some round error)
+
+```{r effR summary statistics, results = 'asis'}
+print(xtable(
+  select(peak_time_table, PatientID2, peak_dayV, cross_day) %>%
+    rename(peak_viral_day = peak_dayV, effectiveR_eq1_day = cross_day), 
+  digits = 2, caption = "Day of peak viral load (clearance start) and when R = 1 "),
+      comment = F, include.rownames = F)
+
+select(peak_time_table, PatientID2, peak_dayV, cross_day) %>%
+    rename(peak_viral_day = peak_dayV, effectiveR_eq1_day = cross_day) %>%
+  reshape2::melt(measure.vars = c("peak_viral_day", "effectiveR_eq1_day")) %>%
+    group_by(variable) %>%
+    summarize(
+      median = median(value),
+      IQR = paste(round(quantile(value, c(0.25, 0.75)), 3), collapse = ", "),
+      range = paste(round(range(value), 3), collapse = ", ")
+    ) %>%
+    xtable(caption = "Summary stats for day of peak viral load (clearance start) and when R = 1") %>%
+    print(comment = F, include.rownames = F)
+
+```
+
+## Comparing clearance phase initiation and peak immune response day
+
+Clearance phase initiation equivalent to first day that R = 1. It happens much earlier than the peak immune pressure day.
+
+```{r blah, fig.cap='distribution of days for critical immune times', fig.align = 'center',fig.height=3.5,fig.width=3.5}
+
+clearance_data = reshape2::melt(immune_summary_data, measure.vars = c("cross_day", "peak_immune_day"))
+clr_plot = ggplot(data = clearance_data, aes(x = variable, y = value)) +
+  geom_boxplot(width = 0.5, outlier.colour = alpha("white", 0)) +
+  geom_point(aes(colour = PatientID2), size = 3, 
+             position = position_dodge(width = 0.5), alpha = 0.5) +
+  scale_x_discrete(labels = c("Clearance phase\ninitiation", "Maximum immune\npressure")) +
+  scale_y_continuous("Days", limits = x_lims) +
+  theme(legend.position = "none",
+        panel.background = element_rect(colour = "black"),
+        panel.grid.minor = element_blank(),
+        text = element_text(size = 16, family = "Times"),
+        axis.title.y = element_text(size = 11),
+        axis.text.x = element_text(size = 8),
+        axis.title.x = element_blank()
+  )
+
+clr_plot
+
+```
+
+
+## Minimum effective R vs R0
+
+```{r, results = 'asis'}
+R0_data = immune_summary_data %>% group_by(PatientID2, R0, minR) %>%
+  reshape2::melt(measure.vars = c("R0", "minR"))
+
+print(xtable(
+  select(immune_summary_data, PatientID2, R0, minR),
+  digits = 2, caption = "R0 and minimum effective R"),
+      comment = F, include.rownames = F)
+
+R0_data %>% group_by(variable) %>%
+    summarize(
+      median = median(value),
+      IQR = paste(round(quantile(value, c(0.25, 0.75)), 3), collapse = ", "),
+      range = paste(round(range(value), 3), collapse = ", ")
+    ) %>%
+    xtable(caption = "Summary stats for R0 and minimum effective R", digits = 3) %>%
+    print(comment = F, include.rownames = F)
+
+```
+
+
+```{r, fig.cap="R0 vs minimum R", fig.align = 'center', fig.height=3.5,fig.width=3.5}
+R0_plot = ggplot(data = R0_data, aes(x = variable, y = value)) +
+  geom_boxplot(width = 0.5, outlier.colour = alpha("white", 0)) +
+  geom_point(aes(colour = PatientID2), size = 3, 
+             position = position_dodge(width = 0.5), alpha = 0.5) +
+  scale_x_discrete(labels = c(expression(paste(R[0])), "Minimum")) +
+  scale_y_continuous("Effective reproduction number", limits = c(0.75, 3.2), breaks = 1:13/2) +
+  geom_hline(yintercept = 1, alpha = 0.5, linetype = "dotted", size = 1.2) +
+  theme(legend.position = "none",
+        panel.background = element_rect(colour = "black"),
+        panel.grid.minor = element_blank(),
+        text = element_text(size = 16, family = "Times"),
+        axis.title.y = element_text(size = 11),
+        axis.title.x = element_blank()
+  )
+
+R0_plot
+```
+
+## Effective R over time
+
+```{r time series R, fig.align = 'center', fig.cap='Immune pressure over time on infected cell lifespan', fig.height = 4, fig.width = 4}
+dynR0_plot =  ggplot(data = immune_sim_only, aes(x = days_model_adj, y = log10(effR0), colour = PatientID2)) + 
+  geom_line() +
+  scale_y_continuous(expression(paste(Log[10], " effective reproduction number")), limits = c(-0.5, 0.5), breaks = -2:2/4) +
+  scale_x_continuous("Time (days)", limits = x_lims) +
+  geom_hline(yintercept = 1, alpha = 0.5, linetype = "dotted", size = 1.2) +
+  scale_colour_discrete(guide = F) +
+  theme(legend.position = "none",
+        panel.background = element_rect(colour = "black"),
+        axis.title.y = element_text(size = 11),
+        panel.grid.minor = element_blank(),
+        text = element_text(size = 16, family = "Times")
+  )
+
+dynR0_plot
+```
+
+# Immune effect on epithelial cell population
+
+Only one of the model predicts substantial population depletion
+
+```{r, results = 'asis'}
+
+cell_loss = plyr::ldply(unique(immune_model_fits$PatientID2), function(pid){
+  p_data_temp = subset(sim_data, PatientID2 == pid)
+  data.frame(
+    PatientID2 = pid,
+    max_loss = max(1 - (p_data_temp$S + p_data_temp$I + p_data_temp$I0)/4e8, na.rm = T)
+  )
+})
+cell_loss %>% xtable(caption = "Maximum cell loss (percent)", digits = 3) %>% print(include.rownames = F, comment = F)
+
+cell_loss %>%
+  summarize(
+    median_pct_loss = median(max_loss),
+    range_pct_loss = paste(round(range(max_loss), 3), collapse = ", ")
+  ) %>%
+  xtable(caption = "Summary of maximum cell loss (percent)", digits = 3) %>% print(include.rownames = F, comment = F)
+```
+
+```{r, fig.cap = 'Population depletion of epithelial cells'}
+
+ggplot(data = subset(sim_data, model != "data"),
+       aes(x = days_model, y = ((S + I)/40e7))) + 
+  geom_line(aes(colour = PatientID2)) + facet_wrap(~model) +
+  scale_y_continuous("Remaining epithelial cells / initial epithelial cells") +
+  scale_colour_discrete(guide = F)
+
+```
+
+# Rebound parameters
+
+```{r, results = 'asis'}
+
+rebound_table = readr::read_csv("../tables/supplementary-tables/supptable_cubic_regression.csv")
+rebound_table$rebound = with(rebound_table, ifelse(is.na(rebound), "0", rebound))
+
+rebound_parameters = full_join(immune_model_fits, rebound_table, by = "PatientID2")
+
+rebound_parameters$rebound_cat = with(rebound_parameters, ifelse(rebound == "**", "rebound", "no rebound"))
+rebound_parameters$rebound_cat2 = with(rebound_parameters, ifelse(rebound == "*", "deceleration", rebound_cat))
+
+rebound_parameters %>% group_by(rebound_cat) %>%
+  summarize(
+    'median theta' = median(theta),
+    'median log10 KI)' = median(log10(KI)),
+    'median effector lifespan (1/gamma)' = 1/median(death)
+  ) %>%
+  xtable(caption = "Immune parameter differences by rebound status (two category)") %>% print(comment = F, include.rownames = F)
+
+rebound_parameters %>% group_by(rebound_cat2) %>%
+  summarize(
+    'median theta' = median(theta),
+    'median log10 KI)' = median(log10(KI)),
+    'median effector lifespan (1/gamma)' = 1/median(death)
+  ) %>%
+  xtable(caption = "Immune parameter differences by rebound status") %>% print(comment = F, include.rownames = F)
+
+
+```
+
+```{r rebound plots, fig.caption='parameter distributions by rebound'}
+rebound_parameters_long = rebound_parameters %>% rename(gamma = death) %>%
+  reshape2::melt(measure.vars = c("theta", "KI", "gamma"))
+  
+
+rbnd_pl = ggplot(data = rebound_parameters_long, aes(x = variable, y = log10(value), colour = rebound_cat)) +
+  geom_boxplot() +
+  theme(legend.position = "top", legend.title = element_blank())
+
+rbnd_pl2 = ggplot(data = rebound_parameters_long, aes(x = variable, y = log10(value), colour = rebound_cat2)) +
+  geom_boxplot() +
+  theme(legend.position = "top", legend.title = element_blank())
+
+plot_grid(rbnd_pl, rbnd_pl2)
+
+
+```
+
+# Save output data and figures.
+
+See code for this.
+```{r}
+if(save_output_figs){
+
+  # Figure 3 - no extra modifications
+  ggsave("../figures/Figure3.pdf",
+     all_plots, width = 210, height = 297, units = "mm")
+  
+  # Figure 4 - combine the component plots
+  box_plots_three = plot_grid(peak_box, clr_plot, R0_plot, nrow = 1, labels = LETTERS[2:4], align = "h", hjust = 0)
+  plot_dyn =  plot_grid(dyn_plot, labels = "A", hjust = 0)
+  plot_dynR02 =  plot_grid(dynR0_plot, labels = "E")
+  figure_4 = plot_grid(plot_dyn, box_plots_three, plot_dynR02, nrow = 3, align = "v", hjust = 0)
+
+  ggsave("../figures/Figure4.pdf",
+       figure_4, width = 210, height = 200, units = "mm")
+
+}
+
+if(save_output_tables){
+  immune_fits_table = select(immune_fits_table, -mse)
+  names(immune_fits_table) = c("Infant ID", "theta", "log10 KI", "gamma (x 100)")
+  readr::write_csv(immune_fits_table, "../tables/supplementary-tables/immune_model_fits.csv")
+}
+
+```
+
