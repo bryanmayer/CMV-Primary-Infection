@@ -112,7 +112,9 @@ model_sim = make_plot_data(parms, first_time = T)
 ggplot(data = model_sim, aes(x = days_model, y = count)) + geom_point()
 ```
 
-##4C) Look at actual simulation results. Here we'll just look at episodes from infants A-D for simplicity using their best fits from the immune model optimization. The make_subject_plots takes this information, matches the PatientID2 variable and returns a data.frame with model simulation and the raw data (model = "data") by PatientID2. Plotting this is a little clunky right now, and the make_subject_plots will break unless return_data = T.
+##4C) Look at actual simulation results. 
+
+Here we'll just look at episodes from infants A-D for simplicity using their best fits from the immune model optimization. The make_subject_plots takes this information, matches the PatientID2 variable and returns a data.frame with model simulation and the raw data (model = "data") by PatientID2. Plotting this is a little clunky right now, and the make_subject_plots will break unless return_data = T.
 ```
 load("model_results/ctl_immune_model_fits.RData")
 subset_episodes = subset(CMVPrimaryEpisodes, PatientID2 %in% LETTERS[1:4])
