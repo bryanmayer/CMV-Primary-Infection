@@ -1,6 +1,6 @@
 # Mathematical models of primary CMV
 
-Besides containing the analysis files, this documentation directories contains all of the function, models, batch scripts, and model optimization results from the manuscript. The models presented in the article are all in the model_functions folder.  The main immune model presented is the CTL model. 
+Besides containing the analysis files, this documentation directory contains all of the function, models, batch scripts, and model optimization results from the manuscript. The models presented in the article are all in the model_functions folder.  The main immune model presented is the CTL model. 
 
 The results in the manuscript are in the analysis .Rmd and .pdf files. These R scripts are analysis of optimization results from fitting models to the infant episode data (done using the code in batch_fit_code/):
   * target_cell_model_analysis contains all of the analysis of the target cell model optimizations. R0 was calculated from the expansion phase analysis (the first section).
