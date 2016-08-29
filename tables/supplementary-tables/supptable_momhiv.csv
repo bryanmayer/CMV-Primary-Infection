@@ -1,0 +1,6 @@
+Outcome,Estimate,P-value
+Infection age (days),"-1.29 (-57.32, 54.75)",0.9609492125805094
+Peak (log10 CMV DNA copies/mL) ,"0.19 (-0.57, 0.96)",0.5878404506761468
+Expansion duration (days),"-6.86 (-57.19, 43.48)",0.7716670273266226
+Transition duration (days),"3.71 (-30.55, 37.98)",0.8172601679917044
+Clearance duration (days) ,"-97 (-259.87, 65.87)",0.21880083342330728

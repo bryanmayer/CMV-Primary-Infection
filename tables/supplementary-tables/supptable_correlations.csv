@@ -1,0 +1,5 @@
+Outcome,Estimate_all,Estimate_adj
+Peak (log10 CMV DNA copies/mL) ,"-0.59 (-0.85, -0.12)","-0.38 (-0.76, 0.17)"
+Expansion duration (days),"0.2 (-0.52, 0.72)","-0.29 (-0.83, 0.43)"
+Transition duration (days),"-0.3 (-0.81, 0.31)","-0.16 (-0.69, 0.51)"
+Clearance duration (days) ,"0.05 (-0.55, 0.67)","0.19 (-0.47, 0.85)"

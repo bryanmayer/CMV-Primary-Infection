@@ -1,7 +1,7 @@
 ---
 title: "CMV primary episode analysis"
 author: "Bryan Mayer"
-date: "March 6, 2016"
+date: "August 29, 2016"
 output: pdf_document
 toc: yes
 ---
@@ -20,9 +20,10 @@ library(knitr)
 library(xtable)
 library(ggplot2)
 library(cowplot)
+theme_set(theme_bw())
 
 save_output_figs = F
-save_output_tables = T
+save_output_tables = F
 fontsize = 12
 x_adj = 7
 y_adj = 4
@@ -48,6 +49,16 @@ process_est_ci= function(est, lower, upper){
   est = round(est, 2)
   paste(est, " (95% CI: ", lower, ", ", upper, ")", sep = "")
 }
+
+process_est_interval = function(Estimate, lower = NULL, upper = NULL, digits = 2){
+  if(is.na(Estimate)) return("—")
+    
+  if(is.null(lower)) return(as.character(round(Estimate, digits)))
+  
+  if(is.null(upper)) return(paste0(round(Estimate, digits), " (", round(lower, digits), ")"))
+  
+  paste0(round(Estimate, digits), " (", round(lower, digits),", ", round(upper, digits), ")")
+  }
 
 ```
 
@@ -488,7 +499,7 @@ correlation_data = select(triphasicFit, PatientID2, age, peak, first_peak_day, h
 
 #names(compare_data) = c("Age (days)", "Peak", "Growth duration\n(days)", "Transition\nduration (days)", "Clearance\nduration (days)")
 variable_set = c("age", "peak", "first_peak_day", "high_shed_length", "decay_length")
-names_set =  c("Age (days)", "Peak", "Expansions days", "Transition days", "Clearance days")
+names_set =  c("Infection age (days)", "Peak (log10 CMV DNA copies/mL) ", "Expansion duration (days)", "Transition duration (days)", "Clearance duration (days) ")
 rename_set = data.frame(var_name = variable_set, label_name = names_set, stringsAsFactors = F)
 
 all_pairs = combn(variable_set, 2)
@@ -544,9 +555,16 @@ print(xtable(process_correlation_results(boot_samples), digits = 3,
 ```{r momhiv correlations, results = 'asis'}
 momhiv_ttests = plyr::ldply(variable_set, function(var){
   reg_formula = as.formula(paste(var, "~momhiv"))
-  output = broom::tidy(lm(reg_formula, data = triphasicFit)) %>%
-    mutate(outcome = rename_set$label_name[rename_set$var_name == var])
-  select(subset(output, term != "(Intercept)"), outcome, estimate, p.value)
+  hiv_model = lm(reg_formula, data = triphasicFit)
+  conf_data = broom::tidy(confint(hiv_model))
+  names(conf_data) = c("term", "lowerCI", "upperCI")
+  
+  output = broom::tidy(hiv_model) %>% left_join(conf_data, by = "term") %>%
+    mutate(
+      Outcome = rename_set$label_name[rename_set$var_name == var],
+      Estimate = process_est_interval(estimate, lowerCI, upperCI))
+    select(subset(output, term != "(Intercept)"), Outcome, Estimate, p.value) %>%
+    rename(`P-value` = p.value)
 })
 
 
@@ -651,9 +669,33 @@ if(save_output_tables){
   WriteXLS(phase_results_table, "../tables/supplementary-tables/primary_episode_analysis_results.xls")
   
   
-  #Supplementary Cubic table
-  cubic_table =  plyr::ldply(unique(CMVPrimaryEpisodes$PatientID), function(pid) cubic_decay_fit_table(pid))
+  #Supplementary MOM HIV
+  write_csv(momhiv_ttests, "../tables/supplementary-tables/supptable_momhiv.csv")
+  
+  #Supplementary correlation
+  corr_all = process_correlation_results(boot_samples) %>%
+    filter(Pair1 == "Infection age (days)") %>%
+    mutate(
+      Estimate_all = process_est_interval(boot_cor, boot_lower95CI, boot_upper95CI)
+    ) %>%
+    rename(Outcome = Pair2) %>% select(Outcome, Estimate_all)
+  
+  corr_exclude = process_correlation_results(boot_samples_ageoutliers) %>%
+    filter(Pair1 == "Infection age (days)") %>%
+    mutate(
+      Estimate_adj = process_est_interval(boot_cor, boot_lower95CI, boot_upper95CI)
+    ) %>%
+    rename(Outcome = Pair2) %>% select(Outcome, Estimate_adj)
+  
+  write_csv(left_join(corr_all, corr_exclude, by = "Outcome"),
+            "../tables/supplementary-tables/supptable_correlations.csv")
+
+  
+   #Supplementary Cubic table
+  cubic_table =  plyr::ldply(unique(CMVPrimaryEpisodes$PatientID), 
+                             function(pid) cubic_decay_fit_table(pid))
   write_csv(cubic_table, "../tables/supplementary-tables/supptable_cubic_regression.csv")
+ 
 
 }
 
