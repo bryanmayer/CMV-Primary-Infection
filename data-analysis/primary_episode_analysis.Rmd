@@ -22,7 +22,7 @@ library(ggplot2)
 library(cowplot)
 theme_set(theme_bw())
 
-save_output_figs = F
+save_output_figs = T
 save_output_tables = F
 fontsize = 12
 x_adj = 7
