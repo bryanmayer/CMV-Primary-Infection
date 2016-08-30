@@ -24,9 +24,10 @@ theme_set(theme_bw())
 
 save_output_figs = T
 save_output_tables = F
-fontsize = 12
-x_adj = 7
-y_adj = 4
+fontsize = 15
+x_adj = 5
+y_adj = 2
+x_adj_title = 5
 
 load("../data/CMVprimaryEpisode.RData")
 source("functions/primary_episode_functions.R")
@@ -82,12 +83,16 @@ tracings = llply(1:2, function(i){
     scale_colour_discrete("Infant ID") +
     scale_x_continuous("Days from start of infection", breaks = 100*0:700, expand = c(0.01, 0.01), limits = c(0, 750)) +
     scale_y_continuous(expression(paste("Log"[10]," CMV DNA conc.")), breaks = 0:9, limits =  c(0, 9)) +
-    theme(legend.position = "top",
+    theme(
+      #legend.position = "top",
+      legend.position = c(1, 0),
+      legend.justification = c(1, 0),
+      legend.direction = "horizontal",
       text = element_text(family = "Times", size = fontsize))
 })
 
 tracings_grid = plot_grid(tracings[[1]], tracings[[2]], nrow = 1,
-                          labels = c("A", "B"), label_size = 18, vjust = 3.5)
+                          labels = c("A", "B"), label_size = 18)
 tracings_grid
 ```
 
@@ -130,8 +135,10 @@ epPlot = ggplot(data = episodeSummary, aes(x = reorder(PatientID2, -whenmax, mea
   geom_linerange(aes(ymin = peakphase_start, ymax = peak_shedding_days_end), 
                  size = 2, colour = "red") +
   geom_linerange(aes(ymin = peak_shedding_days_end, ymax = endTime), size = 2) +
-  scale_x_discrete("Infant ID") +
-  scale_y_continuous("Episode observation time (days)", breaks = 100 * 0:8) +
+  scale_x_discrete("Infant ID", expand = c(0.06, 0.06)) +
+  scale_y_continuous("Episode observation time (days)", breaks = 100 * 0:8, limits = c(-25, 775)) +
+  annotate("text", label = "Age:", x = Inf, y = -Inf, vjust = 1.2, hjust = "left") +
+  geom_text(aes(label = round(age), y = -Inf), hjust = -0.2) +
   geom_point(size = 4, colour = "red") +
   geom_point(aes(size = peak), shape = 21, colour = "red") +
   scale_size_continuous("Peak size", range = c(4, 13), breaks = c(7, 7.5, 8, 8.5, 9)) +
@@ -149,6 +156,28 @@ epPlot + ggtitle("Red region denotes shedding within 1 log of peak")
 ```
 
 ## Comparison of oral and plasma shedding
+
+```{r raw tracings for each infant, fig.height = 12, fig.width = 10}
+
+plasma_plots = ggplot(data = CMVPrimaryEpisodes, aes(x = days2, y = count)) +
+    geom_line(size = 1, colour = "gray") +
+    #geom_point(alpha = 0.5) +
+    geom_bar(aes(y = plasma_count), width = 1, colour = "black",
+         stat = "identity", position = "dodge") +
+    geom_point(aes(y = plasma_count), shape = 12, size = 3,
+       stat = "identity") +
+    scale_x_continuous("Days from start of infection", 
+                       breaks = 100*0:700, expand = c(0.01, 0.01), limits = c(0, 750)) +
+    scale_y_continuous(expression(paste("Log"[10]," CMV DNA conc.")), 
+                         breaks = 0:9, limits =  c(0, 9)) +
+    facet_wrap(~PatientID2, scales = "free_x") +
+    theme(text = element_text(family = "Times", size = fontsize),
+                              strip.background = element_blank())
+    
+plasma_plots
+
+
+```
 
 ```{r plasma and oral plots, fig.height = 5.5, fig.width = 6, results = 'asis'}
 plasma_data = subset(CMVPrimaryEpisodes, !is.na(plasma_count)) %>%
@@ -364,7 +393,7 @@ duration_pl = ggplot(data = subset(durationData, !(variable == "decay" & value =
   scale_y_continuous("Duration (wks)", breaks = 10*0:10)+
   theme(
     axis.text.x = element_text(size = fontsize - x_adj),
-    axis.title.x = element_text(size = fontsize - 5),
+    axis.title.x = element_text(size = fontsize - x_adj_title),
     axis.title.y = element_text(size = fontsize - y_adj),
     text = element_text(family = "Times", size = fontsize))
 
@@ -374,7 +403,7 @@ swab_pl = ggplot(data = swabVar, aes(x = phase, y = change)) +
   scale_fill_manual(guide = F, breaks =  c("growth", "middle", "decay"),
                     values = c("White", "#CCCCCC80", "#80808080")) +
   scale_x_discrete("Episode phase", limits = c("growth", "middle", "decay"), labels = phase_names) +
-  scale_y_continuous(expression(paste("Swab to swab change(log"[10]," CMV DNA conc.)")),
+  scale_y_continuous(expression(paste("Swab to swab change (log"[10]," CMV DNA conc.)")),
                      limits = c(-3, 3), breaks = -6:6) +
   geom_hline(aes(yintercept = 0), alpha = 0.5, linetype = "dashed") +
   geom_text(aes(x = phase, label = count, y = -Inf), vjust = -0.3, 
@@ -382,7 +411,7 @@ swab_pl = ggplot(data = swabVar, aes(x = phase, y = change)) +
               dplyr::summarize(count = n()))+
   theme(
     axis.text.x = element_text(size = fontsize - x_adj),
-    axis.title.x = element_text(size = fontsize - 5),
+    axis.title.x = element_text(size = fontsize - x_adj_title),
     axis.title.y = element_text(size = fontsize - y_adj),
     text = element_text(family = "Times", size = fontsize))
 
@@ -396,13 +425,13 @@ slope_pl = ggplot(data = triphasicFit %>%
   scale_fill_manual(guide = F, breaks =  c("growth", "middle", "decay"),
                     values = c("White", "#CCCCCC80", "#80808080")) +
   scale_x_discrete("Episode phase", limits = c("growth", "middle", "decay"), labels = phase_names) +
-  scale_y_continuous(expression(paste("Estimated weekly change(log"[10]," CMV DNA conc./wk)")),
+  scale_y_continuous(expression(paste("Estimated weekly change (log"[10]," CMV DNA conc./wk)")),
                      limits = c(-0.5, 2), breaks = -1:4/2) +
   geom_hline(aes(yintercept = 0), alpha = 0.5, linetype = "dashed") +
   theme(
     axis.text.x = element_text(size = fontsize - x_adj - 0.5),
     axis.title.y = element_text(size = fontsize - y_adj),
-    axis.title.x = element_text(size = fontsize - 5),
+    axis.title.x = element_text(size = fontsize - x_adj_title),
     text = element_text(family = "Times", size = fontsize))
 
 ##### Rsq ######
@@ -414,10 +443,10 @@ rsq_pl =  ggplot(data = triphasicFit %>%
   scale_fill_manual(guide = F, breaks =  c("growth", "middle", "decay"),
                     values = gray.colors(3, start = 1, end = 0.5, gamma = 2.2, alpha = 0.5)) +
   scale_x_discrete("Episode phase", limits = c("rsq_1", "rsq_2", "rsq_3"), labels = phase_names) +
-  scale_y_continuous(expression(paste(R^2)), limits = c(0, 1), breaks = -1:4/2) +
+  scale_y_continuous(expression(paste(R^2)), limits = c(0, 1), breaks = -1:4/4) +
   theme(
     axis.text.x = element_text(size = fontsize - x_adj),
-    axis.title.x = element_text(size = fontsize - 5),
+    axis.title.x = element_text(size = fontsize - x_adj_title),
     axis.title.y = element_text(size = fontsize - y_adj),
     text = element_text(family = "Times", size = fontsize))
 
@@ -430,7 +459,7 @@ dbl_pl = ggplot(data = triphasicFit %>%
   scale_fill_manual(guide = F, breaks =  c("double", "half"),
                     values = gray.colors(3, start = 1, end = 0.5, gamma = 2.2, alpha = 0.5)[c(1,3)]) +
   scale_x_discrete("", limits = c("double", "half"), labels = c("Doubling time", "Half-life")) +
-  scale_y_continuous("Days", breaks = 10 * 0:10) +
+  scale_y_continuous("Days", breaks = 10 * 0:11) +
   theme(
     axis.title.y = element_text(size = fontsize - y_adj),
     text = element_text(family = "Times", size = fontsize))
@@ -620,6 +649,13 @@ if(save_output_figs){
   ggsave("../figures/Figure2.pdf",
          figure2,
          width = 12, height = 10)
+  
+  ###### Supplementary figure for plasma
+ 
+
+  ggsave("../figures/supplementary-figures/suppfig_raw_plasma.pdf",
+         plasma_plots, width = 10, height = 10)
+
   
   ###### Supplementary figure for rebound
   # Data comes from cubic rebound subsection

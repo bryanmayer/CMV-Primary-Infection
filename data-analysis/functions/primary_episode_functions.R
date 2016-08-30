@@ -40,6 +40,7 @@ primary_episode_fun = function(dataIn){
   outdata = with(dataIn, data.frame(
     PatientID2 = PatientID2[1],
     Virus = Virus[1],
+    age = min(days_dob),
     startTime = days2[1],
     endTime = tail(days2, 1),
     firstpos = count[1],
