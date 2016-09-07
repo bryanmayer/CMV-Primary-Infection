@@ -338,7 +338,7 @@ cubic_decay_fit_table =  function(pid){
     }
   
   #to match calculation from main analysis
-  if(is.na(critPoints)) critPoint2 = Inf else critPoint2 = critPoints[2]
+  if(all(is.na(critPoints))) critPoint2 = Inf else critPoint2 = critPoints[2]
   last_day = max(decay_data$days2)
   minPoint2 = (2*a*critPoint2 + b) > 0 #ok to be missing
   
@@ -349,7 +349,7 @@ cubic_decay_fit_table =  function(pid){
   
   #if(rebound == " " & max(decay_data$days2) - inf_point < 100) rebound="*"
   
-  rebound = if(critPoint2 < last_day) "**" else if(last_day - inf_point < 100 | !is.na(minPoint2)) "*" else " "
+  rebound = if(critPoint2 < last_day) "**" else if(last_day - inf_point < 100 | !all(is.na(critPoints))) "*" else " "
 
   data.frame(
     PatientID2 = decay_data$PatientID2[1],

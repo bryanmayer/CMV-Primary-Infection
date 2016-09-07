@@ -21,16 +21,18 @@ library(dplyr)
 library(readr)
 library(deSolve)
 library(ggplot2)
+library(grid)
 library(gridExtra)
 library(scales)
 library(RColorBrewer)
-library(cowplot)
 library(GGally)
+library(cowplot)
 library(xtable)
 library(knitr)
 library(gtable)
 library(doParallel)
 registerDoParallel(cores = 4)
+theme_set(theme_bw())
 
 save_output_figs = F
 save_output_tables = F
@@ -138,6 +140,8 @@ imm_plots = plyr::llply(unique(sim_data$PatientID2), function(pid){
 
 }, .parallel = F)
 
+
+
 bot_lab = "Time (days)"
 left_lab = expression(paste("Log"[10]," CMV DNA conc."))
 
@@ -146,6 +150,25 @@ all_plots = arrangeGrob(grobs = imm_plots, nrow = 7, ncol = 2,
                         left = textGrob(left_lab, vjust = 1.2, rot = 90, gp=gpar(fontfamily = "Times", fontsize = 18)))
 
 plot_grid(all_plots)
+
+
+fit_plots = ggplot() +
+  geom_point(data = subset(sim_data, model == "data"), aes(x = days_model, y = count), colour = "black") +
+  geom_line(data = subset(sim_data, model != "data"),
+          aes(x = days_model, y = count, colour = model, linetype = model), size = 1.5, alpha = 0.7) +
+  scale_x_continuous("Time (days)", breaks = 100*0:8) +
+  scale_y_continuous("", breaks = 2*0:5, limits = c(0, 10.5)) +
+  scale_colour_discrete("") +
+  scale_linetype_discrete("") +
+  facet_wrap(~PatientID2, ncol = 2, scales = "free_x") +
+  theme(legend.position = "none",
+          plot.margin = unit(c(0, 0.2, 0, -0.1),"cm"),
+          text = element_text(family = "Times"),
+          title = element_text(size = 9.5),
+          legend.position = "none") 
+
+  ggsave("../figures/Figure3TEST.pdf",
+     fit_plots, width = 210, height = 297, units = "mm")
 ```
 
 
@@ -483,6 +506,8 @@ if(save_output_figs){
   # Figure 3 - no extra modifications
   ggsave("../figures/Figure3.pdf",
      all_plots, width = 210, height = 297, units = "mm")
+  
+
   
   # Figure 4 - combine the component plots
   box_plots_three = plot_grid(peak_box, clr_plot, R0_plot, nrow = 1, labels = LETTERS[2:4], align = "h", hjust = 0)

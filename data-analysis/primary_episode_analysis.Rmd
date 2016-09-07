@@ -22,8 +22,8 @@ library(ggplot2)
 library(cowplot)
 theme_set(theme_bw())
 
-save_output_figs = T
-save_output_tables = F
+save_output_figs = F
+save_output_tables = T
 fontsize = 15
 x_adj = 5
 y_adj = 2
@@ -465,7 +465,7 @@ dbl_pl = ggplot(data = triphasicFit %>%
     text = element_text(family = "Times", size = fontsize))
 
 phase_feature_plot = plot_grid(firstposPeak, duration_pl, swab_pl, slope_pl, dbl_pl, rsq_pl,
-                    labels = c("A", "B", "C", "D", "E", "F"), nrow = 2,
+                    labels = c("A", "B", "C", "D", "E", "F"), nrow = 2, align = "hv",
                     label_size = 18, hjust = 0)
 
 phase_feature_plot
@@ -645,7 +645,7 @@ if(save_output_figs){
   # The 6 plots comes from Three Phase Classification -> Plot of Features subsection
   
   figure2 = plot_grid(firstposPeak, duration_pl, swab_pl, slope_pl, dbl_pl, rsq_pl,
-                    labels = c("A", "B", "C", "D", "E", "F"), label_size = 18, hjust = 0)
+                    labels = c("A", "B", "C", "D", "E", "F"), label_size = 18, hjust = 0, align = "hv")
   ggsave("../figures/Figure2.pdf",
          figure2,
          width = 12, height = 10)
@@ -728,7 +728,7 @@ if(save_output_tables){
 
   
    #Supplementary Cubic table
-  cubic_table =  plyr::ldply(unique(CMVPrimaryEpisodes$PatientID), 
+  cubic_table =  plyr::ldply(unique(CMVPrimaryEpisodes$PatientID2), 
                              function(pid) cubic_decay_fit_table(pid))
   write_csv(cubic_table, "../tables/supplementary-tables/supptable_cubic_regression.csv")
  
