@@ -38,13 +38,12 @@ save_output_figs = F
 save_output_tables = F
 
 fontsize_set = 13
+fontsize_ticks = 13
 x_lims = c(0, 425)
 
 
 opts_chunk$set(warning = FALSE, message = FALSE, echo = FALSE,
               error = FALSE)
-
-theme_set(theme_bw())
 
 source("model_functions/CMV_Models.R")
 source("model_functions/processing_functions.R")
@@ -154,21 +153,21 @@ plot_grid(all_plots)
 
 fit_plots = ggplot() +
   geom_point(data = subset(sim_data, model == "data"), aes(x = days_model, y = count), colour = "black") +
-  geom_line(data = subset(sim_data, model != "data"),
+  geom_line(data = subset(sim_data, model != "data" & days_model >= 0),
           aes(x = days_model, y = count, colour = model, linetype = model), size = 1.5, alpha = 0.7) +
-  scale_x_continuous("Time (days)", breaks = 100*0:8) +
-  scale_y_continuous("", breaks = 2*0:5, limits = c(0, 10.5)) +
+  scale_x_continuous("Time (days)", breaks = 100*0:8, expand = c(0.01, 0.01)) +
+  scale_y_continuous(left_lab, breaks = 2*0:5, limits = c(0, 10.5)) +
   scale_colour_discrete("") +
   scale_linetype_discrete("") +
-  facet_wrap(~PatientID2, ncol = 2, scales = "free_x") +
+  facet_wrap(~PatientID2, ncol = 2, scales = "free") +
   theme(legend.position = "none",
-          plot.margin = unit(c(0, 0.2, 0, -0.1),"cm"),
-          text = element_text(family = "Times"),
-          title = element_text(size = 9.5),
-          legend.position = "none") 
+        axis.title = element_text(size = 18),
+        strip.text.x = element_text(size = 14, margin = unit(c(0.25,0.5,0.25,0.5),"lines")),
+        text = element_text(family = "Times"),
+        title = element_text(size = 9.5),
+        strip.background = element_blank()) 
 
-  ggsave("../figures/Figure3TEST.pdf",
-     fit_plots, width = 210, height = 297, units = "mm")
+ 
 ```
 
 
@@ -215,7 +214,7 @@ dyn_plot = ggplot(data = immune_sim_only, aes(x = days_model, y = 100 - action_p
         panel.background = element_rect(colour = "black"),
         axis.title.y = element_text(size = 11),
         panel.grid.minor = element_blank(),
-        text = element_text(size = 16, family = "Times")
+        text = element_text(size = fontsize_ticks, family = "Times")
   )
 
 dyn_plot
@@ -252,7 +251,7 @@ peak_box = ggplot(data = immune_summary_data, aes(x = "", y = minimum_lifespan_h
   theme(legend.position = "none",
         panel.background = element_rect(colour = "black"),
         panel.grid.minor = element_blank(),
-        text = element_text(size = 16, family = "Times"),
+        text = element_text(size = fontsize_ticks, family = "Times"),
         axis.title.y = element_text(size = 11),
         axis.title.x = element_blank(),
         axis.ticks.x = element_blank()
@@ -290,7 +289,7 @@ peak_immune_time_plot = ggplot(data = immune_summary_data, aes(x = "", y = peak_
   theme(legend.position = "none",
         panel.background = element_rect(colour = "black"),
         panel.grid.minor = element_blank(),
-        text = element_text(size = 16, family = "Times"),
+        text = element_text(size = fontsize_ticks, family = "Times"),
         axis.title.y = element_text(size = 11),
         axis.title.x = element_blank(),
         axis.ticks.x = element_blank()
@@ -343,7 +342,7 @@ clr_plot = ggplot(data = clearance_data, aes(x = variable, y = value)) +
   theme(legend.position = "none",
         panel.background = element_rect(colour = "black"),
         panel.grid.minor = element_blank(),
-        text = element_text(size = 16, family = "Times"),
+        text = element_text(size = fontsize_ticks, family = "Times"),
         axis.title.y = element_text(size = 11),
         axis.text.x = element_text(size = 8),
         axis.title.x = element_blank()
@@ -388,7 +387,7 @@ R0_plot = ggplot(data = R0_data, aes(x = variable, y = value)) +
   theme(legend.position = "none",
         panel.background = element_rect(colour = "black"),
         panel.grid.minor = element_blank(),
-        text = element_text(size = 16, family = "Times"),
+        text = element_text(size = fontsize_ticks, family = "Times"),
         axis.title.y = element_text(size = 11),
         axis.title.x = element_blank()
   )
@@ -409,7 +408,7 @@ dynR0_plot =  ggplot(data = immune_sim_only, aes(x = days_model_adj, y = log10(e
         panel.background = element_rect(colour = "black"),
         axis.title.y = element_text(size = 11),
         panel.grid.minor = element_blank(),
-        text = element_text(size = 16, family = "Times")
+        text = element_text(size = fontsize_ticks, family = "Times")
   )
 
 dynR0_plot
@@ -505,15 +504,19 @@ if(save_output_figs){
 
   # Figure 3 - no extra modifications
   ggsave("../figures/Figure3.pdf",
-     all_plots, width = 210, height = 297, units = "mm")
+     fit_plots, width = 210, height = 297, units = "mm")
   
 
+    # Figure 4 - combine the component plots
+  xstart = 0.025
   
-  # Figure 4 - combine the component plots
-  box_plots_three = plot_grid(peak_box, clr_plot, R0_plot, nrow = 1, labels = LETTERS[2:4], align = "h", hjust = 0)
-  plot_dyn =  plot_grid(dyn_plot, labels = "A", hjust = 0)
-  plot_dynR02 =  plot_grid(dynR0_plot, labels = "E")
-  figure_4 = plot_grid(plot_dyn, box_plots_three, plot_dynR02, nrow = 3, align = "v", hjust = 0)
+  figure_4 = ggdraw() +
+  draw_plot(dyn_plot, xstart, .6667, 1 - xstart, 0.33333) +
+  draw_plot(peak_box, xstart, 0.3333, 0.3333 - xstart, 0.33333) +
+  draw_plot(clr_plot, 0.3333, 0.3333, 0.3333 - xstart, 0.33333) +
+  draw_plot(R0_plot, 0.666777, 0.3333, 0.3333 - xstart, 0.33333) +
+  draw_plot(dynR0_plot, xstart, 0, 1 - xstart, 0.33333) +
+  draw_plot_label(c("A", "B", "C", "D", "E"), x=c(0, 0, 0.325, 0.645, 0), y = c(1, 0.67, 0.67, 0.67, 0.33))
 
   ggsave("../figures/Figure4.pdf",
        figure_4, width = 210, height = 200, units = "mm")
