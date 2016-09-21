@@ -1,6 +1,6 @@
 # CMV-Primary-Analysis
 
-This contains a reproduction of the analysis code for "Dynamics of persistent oral cytomegalovirus shedding during primary infection in Ugandan infants." The article has been published in the Journal of Infectious Diseases:
+This repo contains a reproduction of the analysis code for "Dynamics of persistent oral cytomegalovirus shedding during primary infection in Ugandan infants." The article has been published in the Journal of Infectious Diseases:
 http://jid.oxfordjournals.org/content/early/2016/09/19/infdis.jiw442
 
 Here are the main components:
