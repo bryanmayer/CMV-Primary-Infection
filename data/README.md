@@ -18,7 +18,7 @@ Data dictionary:
 |**Virus** | Virus ID | chr| "CMV"|
 |**count** | log10 oral viral load | num | |
 |**plasma_count** | log10 plasma viral load | num | |
-|**gender** |  | num | 1 = ; 2 =  |
+|**gender** |  | num | 1 = male; 2 =  female|
 |**momhiv** | Maternal HIV status | chr | "neg", "pos" |
 |**days** | Days after enrollment | num |  |
 |**Use** |  indicator of whether infant has > 1 month data| chr | "N" "Y" |
