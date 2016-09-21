@@ -9,7 +9,7 @@ The main components of the analysis are:
 #[3) Mathematical Model Analysis](https://github.com/bryanmayer/CMV-Primary-Infection/tree/master/mathematical-models)
 
 
-Figures and tables included in the manuscript were generated from this code. Model fitting was done using a cluster server. The code used for that analysis is in this repo but only for reference.  R version information (including the info from the server) is contained at the top level of this directory. 
+Figures and tables included in the manuscript were generated from this code. Model fitting was done using a cluster server. The code used for that analysis is in this repo but only for reference.  R version and package version information (including the info from the server) is available in the [R-version-info directory](https://github.com/bryanmayer/CMV-Primary-Infection/tree/master/R-version-info). 
 
 citation:    
 Mayer BT, Matrajt L, Krantz E, Corey L, Casper C, Gantt S, Schiffer JT.  “Dynamics of persistent oral cytomegalovirus shedding during primary infection in Ugandan infants.” Journal of Infectious Diseases. 2016. http://jid.oxfordjournals.org/content/early/2016/09/19/infdis.jiw442. DOI: 10.1093/infdis/jiw442
