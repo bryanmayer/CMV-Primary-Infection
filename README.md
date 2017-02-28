@@ -3,6 +3,8 @@
 This repository contains a reproduction of the analysis code for "Dynamics of persistent oral cytomegalovirus shedding during primary infection in Ugandan infants." The article has been published in the Journal of Infectious Diseases:
 http://jid.oxfordjournals.org/content/214/11/1735
 
+[A copy of the Supplement is also located here.](https://github.com/bryanmayer/CMV-Primary-Infection/blob/master/Supplementary-Materials.pdf)
+
 The main components of the analysis are:
 #[1) All of the data used in the analysis](https://github.com/bryanmayer/CMV-Primary-Infection/tree/master/data)
 #[2) General Episode Analysis](https://github.com/bryanmayer/CMV-Primary-Infection/tree/master/data-analysis)
