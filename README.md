@@ -5,10 +5,10 @@ http://jid.oxfordjournals.org/content/214/11/1735
 
 [A copy of the Supplement is also located here.](https://github.com/bryanmayer/CMV-Primary-Infection/blob/master/Supplementary-Materials.pdf)
 
-The main components of the analysis are:
-#[1) All of the data used in the analysis](https://github.com/bryanmayer/CMV-Primary-Infection/tree/master/data)
-#[2) General Episode Analysis](https://github.com/bryanmayer/CMV-Primary-Infection/tree/master/data-analysis)
-#[3) Mathematical Model Analysis](https://github.com/bryanmayer/CMV-Primary-Infection/tree/master/mathematical-models)
+The main components of the analysis are:    
+#[1) All of the data used in the analysis](https://github.com/bryanmayer/CMV-Primary-Infection/tree/master/data)    
+#[2) General Episode Analysis](https://github.com/bryanmayer/CMV-Primary-Infection/tree/master/data-analysis)    
+#[3) Mathematical Model Analysis](https://github.com/bryanmayer/CMV-Primary-Infection/tree/master/mathematical-models)    
 
 
 Figures and tables included in the manuscript were generated from this code. Model fitting was done using a cluster server. The code used for that analysis is in this repo but only for reference.  R version and package version information (including the info from the server) is available in the [R-version-info directory](https://github.com/bryanmayer/CMV-Primary-Infection/tree/master/R-version-info). 
