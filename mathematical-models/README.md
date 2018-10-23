@@ -9,11 +9,13 @@ The results in the manuscript are in the analysis .Rmd and .pdf files. These R s
 
 # How to use this repo to simulate a model
 
-##1) Use R 
+## 1) Use R 
 
-Make sure appropriate packages are installed: **plyr**, **dplyr**, **deSolve**, **ggplot2**, **gridExtra**, **scales**, RColorBrewer, doParallel, pracma, reshape2, knitr.  Some of these libraries were utilized in very early iterations of the modeling and may not be necessary anymore, I bolded the ones I know are absolutely necessary.
+Make sure appropriate packages are installed: **plyr**, **dplyr**, **deSolve**, **ggplot2**, **gridExtra**, **scales**, RColorBrewer, doParallel, pracma, reshape2, knitr.  Some of these libraries were utilized in very early iterations of the modeling and may not be necessary anymore, I bolded the ones I know are absolutely necessary. Also, be cognizant of the [package versions](https://github.com/bryanmayer/CMV-Primary-Infection/blob/master/R-version-info/package_versions.pdf).
 
-##2) Source in necessary functions
+Note (2018-10-23): **plyr** has been generally deprecated and replaced by **purrr** these but it still might be useful for its parallel implementations in this project. 
+
+## 2) Source in necessary functions
 
 The two most important scripts to simulating the models are processing_functions.R and CMV_Models.R from the "model_functions/" folder. optim_functions.R and scripts in the parameters/ folder are used for optimization.
 
@@ -24,7 +26,8 @@ source("model_function/CMV_Models.R")
 ```
 processing_functions.R will give you error if you are missing packages.
 
-##3) Assign your parameter values
+## 3) Assign your parameter values
+
 Here is an example
 ```
 parms = data.frame(
@@ -78,7 +81,7 @@ infant_A_episode = subset(CMVPrimaryEpisodes, PatientID2 == "A")
 quickplot(parms, infant_A_episode)
 ```
 
-##4B) Get simulation data using make_plot_data() or make_highres_sim()
+## 4B) Get simulation data using make_plot_data() or make_highres_sim()
 
 make_plot_data() will return output of the simulation.  Like quickplot, you can add a data set for it to plot over (it will be stored in the output with variable model = "data").  If data is provided, the simulation will only run over the length of that data (800 is default).  It can conduct multiple simulations if there are multiple models in the parm file.  The model simulations are stacked (tidy data for plotting) so they can be easily faceted.  make_plot_data does not match the parameter set's PatientID2 variable to the data variable.
 
@@ -112,7 +115,7 @@ model_sim = make_plot_data(parms, first_time = T)
 ggplot(data = model_sim, aes(x = days_model, y = count)) + geom_point()
 ```
 
-##4C) Look at actual simulation results. 
+## 4C) Look at actual simulation results. 
 
 Here we'll just look at episodes from infants A-D for simplicity using their best fits from the immune model optimization. The make_subject_plots takes this information, matches the PatientID2 variable and returns a data.frame with model simulation and the raw data (model = "data") by PatientID2. Plotting this is a little clunky right now, and the make_subject_plots will break unless return_data = T.
 ```
@@ -131,7 +134,7 @@ ggplot(data = subset(simulation_data, model != 'data'),
 ```
 
 
-##4D) Manually simulate the model using an ode solver
+## 4D) Manually simulate the model using an ode solver
 
 Note: you still need to source in CMV_Models.R:
 
